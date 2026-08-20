@@ -1,0 +1,13 @@
+{
+  "name": "office-fpl-league-sync",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "node scripts/sync.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0",
+    "node-fetch": "^3.3.2"
+  }
+}

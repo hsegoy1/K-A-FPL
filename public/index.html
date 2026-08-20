@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>K&A Paid FPL — Matchday Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="matchhead">
+  <div class="matchhead-inner">
+    <div class="crest" aria-hidden="true">⚽</div>
+    <div class="matchhead-text">
+      <p class="eyebrow" id="league-eyebrow">LOADING LEAGUE…</p>
+      <h1 id="league-name">Office FPL</h1>
+    </div>
+    <div class="matchhead-meta">
+      <span class="gw-chip" id="gw-chip">GW —</span>
+    </div>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-view="standings">Table</button>
+    <button class="tab" data-view="stats">Matchday Stats</button>
+    <button class="tab" data-view="winners">GW Winners</button>
+  </nav>
+</header>
+
+<main id="app">
+
+  <section id="view-standings" class="view active">
+    <div class="panel">
+      <table class="sheet-table">
+        <thead>
+          <tr>
+            <th class="col-rank">Pos</th>
+            <th class="col-team">Team</th>
+            <th class="col-manager">Manager</th>
+            <th class="col-num">GW</th>
+            <th class="col-num">Total</th>
+          </tr>
+        </thead>
+        <tbody id="standings-body">
+          <tr><td colspan="5" class="loading-row">Loading standings…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="view-stats" class="view">
+    <div class="stat-grid" id="stat-grid">
+      <p class="loading-row">Loading matchday stats…</p>
+    </div>
+  </section>
+
+  <section id="view-winners" class="view">
+    <div class="panel">
+      <table class="sheet-table">
+        <thead>
+          <tr>
+            <th class="col-rank">GW</th>
+            <th class="col-team">Team</th>
+            <th class="col-manager">Manager</th>
+            <th class="col-num">Points</th>
+          </tr>
+        </thead>
+        <tbody id="winners-body">
+          <tr><td colspan="4" class="loading-row">Loading winners log…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="view-manager" class="view">
+    <button class="back-link" id="back-to-table">&larr; Back to table</button>
+    <div class="panel" id="manager-detail">
+      <p class="loading-row">Loading manager…</p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot-note">
+  <p>Data pulled from the official FPL API · synced daily · built by the office, for the office ⚽</p>
+</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
