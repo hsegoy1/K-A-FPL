@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>K&A Paid FPL — Preview v3 (mock data)</title>
+<title>K&A Paid FPL</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -230,6 +230,7 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .club-upload-row .cn{flex:1;font-size:12.5px;font-weight:600;}
 .upload-mini-btn{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:10.5px;color:var(--text);cursor:pointer;}
 .upload-mini-btn.has{border-color:var(--green);color:var(--green);}
+.song-pos-num{font-family:var(--font-m);font-size:11px;color:var(--muted);width:18px;flex-shrink:0;}
 
 /* ---------- Prize admin & season prizes ---------- */
 .season-prize-row{display:flex;align-items:center;gap:10px;background:var(--panel-glass);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:8px;}
@@ -289,6 +290,42 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .viewing-pill .crest{width:20px;height:20px;}
 .viewing-pill.hidden{display:none;}
 
+/* ---------- Intro sting (plays every visit — the badge reveal) ---------- */
+.intro-overlay{position:fixed;inset:0;z-index:120;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;}
+.intro-overlay.hidden{display:none;}
+.nf-bar{position:absolute;top:0;bottom:0;width:34vw;filter:blur(20px);opacity:0;}
+.nf-bar-l{left:-38vw;background:linear-gradient(90deg, transparent, var(--club-s, #00E5FF), transparent);}
+.nf-bar-r{right:-38vw;background:linear-gradient(90deg, transparent, var(--club-p, #FF2E92), transparent);}
+.nf-bars.go .nf-bar-l{animation:barInL 2.5s cubic-bezier(.5,0,.2,1) forwards;}
+.nf-bars.go .nf-bar-r{animation:barInR 2.5s cubic-bezier(.5,0,.2,1) forwards;}
+@keyframes barInL{0%{opacity:0;transform:translateX(0);}20%{opacity:.5;}100%{opacity:0;transform:translateX(38vw);}}
+@keyframes barInR{0%{opacity:0;transform:translateX(0);}20%{opacity:.5;}100%{opacity:0;transform:translateX(-38vw);}}
+.nf-glow{position:absolute;width:60vh;height:60vh;border-radius:50%;background:radial-gradient(circle, var(--club-s, #00E5FF), transparent 70%);opacity:0;filter:blur(12px);}
+.nf-glow.go{animation:glowBuild 2.5s ease-in forwards;}
+@keyframes glowBuild{0%{opacity:0;transform:scale(.25);}100%{opacity:.5;transform:scale(1);}}
+.intro-flash{position:absolute;inset:0;background:radial-gradient(circle at 50% 50%, rgba(255,255,255,.95), transparent 42%);opacity:0;pointer-events:none;}
+.intro-flash.go{animation:flashPulse .4s ease-out;}
+@keyframes flashPulse{0%{opacity:0;}20%{opacity:1;}100%{opacity:0;}}
+.intro-badge-stage{position:relative;width:190px;height:206px;}
+.intro-badge{width:100%;height:100%;background-size:contain;background-position:center;background-repeat:no-repeat;filter:drop-shadow(0 0 40px rgba(0,229,255,.5));opacity:0;transform:scale(.2);}
+.intro-badge.pop{animation:badgePop .55s cubic-bezier(.2,1.5,.4,1) forwards;}
+@keyframes badgePop{0%{opacity:0;transform:scale(.2);}55%{opacity:1;transform:scale(1.18);}80%{transform:scale(0.96);}100%{opacity:1;transform:scale(1);}}
+.intro-badge.hold{animation:badgeBreathe 1.3s ease-in-out infinite;}
+@keyframes badgeBreathe{0%,100%{transform:scale(1);}50%{transform:scale(1.025);}}
+.intro-badge.dissolve{animation:badgeDissolve .32s ease-in forwards;}
+@keyframes badgeDissolve{0%{opacity:1;filter:blur(0);}100%{opacity:0;filter:blur(14px);}}
+.intro-shine{position:absolute;inset:0;background:linear-gradient(115deg, transparent 42%, rgba(255,255,255,.85) 50%, transparent 58%);background-size:280% 280%;background-position:-120% -120%;opacity:0;pointer-events:none;}
+.intro-shine.go{animation:shineSweep .7s ease-out forwards;}
+@keyframes shineSweep{0%{opacity:1;background-position:-120% -120%;}100%{opacity:0;background-position:120% 120%;}}
+.intro-skip{position:absolute;bottom:24px;right:24px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);border-radius:10px;padding:8px 14px;font-family:var(--font-m);font-size:11px;cursor:pointer;z-index:5;}
+
+/* ---------- Tap-to-enter gate (returning visitors — browsers block audio until a real tap happens) ---------- */
+.tap-gate{position:fixed;inset:0;z-index:130;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;cursor:pointer;}
+.tap-gate.hidden{display:none;}
+.tap-gate .tg-title{font-family:var(--font-d);font-size:20px;font-weight:700;}
+.tap-gate .tg-btn{background:var(--grad);color:#0D0715;border:none;border-radius:14px;padding:14px 28px;font-family:var(--font-d);font-weight:700;font-size:14px;animation:tapPulse 1.6s ease-in-out infinite;}
+@keyframes tapPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.05);}}
+
 /* ---------- Toast ---------- */
 .toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(20px);background:rgba(23,15,38,.85);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:11px 16px;font-size:12.5px;z-index:90;opacity:0;transition:all .35s cubic-bezier(.22,1,.36,1);max-width:88vw;text-align:center;pointer-events:none;}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
@@ -321,6 +358,25 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 
 <div class="onboard-overlay hidden" id="onboard-overlay">
   <div class="onboard-sheet" id="onboard-sheet"></div>
+</div>
+
+<div class="intro-overlay hidden" id="intro-overlay">
+  <div class="nf-bars" id="nf-bars">
+    <div class="nf-bar nf-bar-l"></div>
+    <div class="nf-bar nf-bar-r"></div>
+  </div>
+  <div class="nf-glow" id="nf-glow"></div>
+  <div class="intro-flash" id="intro-flash"></div>
+  <div class="intro-badge-stage">
+    <div class="intro-badge" id="intro-badge"></div>
+    <div class="intro-shine" id="intro-shine"></div>
+  </div>
+  <button class="intro-skip" id="intro-skip">Skip →</button>
+</div>
+
+<div class="tap-gate hidden" id="tap-gate">
+  <div class="tg-title">K&A Paid FPL</div>
+  <button class="tg-btn" id="tap-gate-btn">▶ Tap to Enter</button>
 </div>
 
 <div class="hero">
@@ -585,19 +641,25 @@ const CLUB_NAMES = {ARS:"Arsenal",MCI:"Man City",LIV:"Liverpool",MUN:"Man Utd",C
 
 // Admin-uploaded overrides — loaded from Firestore once at boot (loadAdminData),
 // updated locally the moment the admin panel saves something.
-let clubAssets = {};  // { code: {crestUrl, bgUrl, anthemUrl} }
+let clubAssets = {};  // { code: {crestUrl, bgUrl} }
 let awardMedia = {};  // { awardId: {soundUrl, gifUrl} }
 let prizeConfig = null;
+let playlistTracks = []; // [{name, url}] — shared queue, everyone hears the same list
+let introSoundUrl = null; // one global intro sting, plays with the badge reveal
 
 async function loadAdminData(){
-  const [clubSnap, mediaSnap, prizeSnap] = await Promise.all([
+  const [clubSnap, mediaSnap, prizeSnap, playlistSnap, introSnap] = await Promise.all([
     getDocs(collection(db, "clubAssets")),
     getDocs(collection(db, "awardMedia")),
     getDoc(doc(db, "adminConfig/prize")),
+    getDoc(doc(db, "adminConfig/playlist")),
+    getDoc(doc(db, "adminConfig/introSound")),
   ]);
   clubSnap.docs.forEach(d => { clubAssets[d.id] = d.data(); });
   mediaSnap.docs.forEach(d => { awardMedia[d.id] = d.data(); });
   prizeConfig = prizeSnap.exists() ? prizeSnap.data() : { ...DEFAULT_PRIZE_CONFIG };
+  playlistTracks = playlistSnap.exists() ? (playlistSnap.data().tracks || []) : [];
+  introSoundUrl = introSnap.exists() ? (introSnap.data().url || null) : null;
 }
 
 function getCustomCrest(code){ return clubAssets[code]?.crestUrl || null; }
@@ -678,8 +740,10 @@ function renderOnboardStep(step){
         ident.club = tile.dataset.club;
         localStorage.setItem("fpl_club", ident.club);
         applyClubTheme(ident.club);
-        playClubAnthem(ident.club);
         closeOnboarding();
+        // This click is a real user gesture, so audio is allowed to play —
+        // safe to run the intro (with sound) right from here.
+        runIntro(startPlaylist);
       });
     });
   }
@@ -893,51 +957,155 @@ function pop(){
   tone(880, 0, 0.09, "sine", 0.08);
   tone(1200, 0.05, 0.12, "sine", 0.06);
 }
-function soundFor(awardId){
+const SFX_DURATIONS = { muppet: 1200, form: 500, bigbrain: 300, default: 200 };
+// Plays the roast SFX for an award, ducking the playlist for the duration and
+// restoring it afterward. Returns nothing — this is the one call site to use.
+function playAwardSfx(awardId){
   const url = awardMedia[awardId]?.soundUrl;
-  if(url) return () => { const a = new Audio(url); a.volume = 0.7; a.play().catch(()=>{}); };
-  if(awardId==="muppet") return sadTrombone;
-  if(awardId==="form") return fanfare;
-  if(awardId==="bigbrain") return buzzer;
-  return pop;
-}
-function crowdCheer(){
-  // Synthesized crowd-roar approximation (filtered white noise) — not a real stadium recording
-  const ctx = getCtx();
-  const dur = 1.4;
-  const bufferSize = ctx.sampleRate * dur;
-  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for(let i=0;i<bufferSize;i++) data[i] = (Math.random()*2-1) * (1 - i/bufferSize);
-  const src = ctx.createBufferSource(); src.buffer = buffer;
-  const filter = ctx.createBiquadFilter(); filter.type = "bandpass"; filter.frequency.value = 900; filter.Q.value = 0.6;
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(0, ctx.currentTime);
-  g.gain.linearRampToValueAtTime(0.22, ctx.currentTime+0.15);
-  g.gain.linearRampToValueAtTime(0, ctx.currentTime+dur);
-  src.connect(filter); filter.connect(g); g.connect(ctx.destination);
-  src.start();
-  [523,659,784].forEach((f,i)=> tone(f, 0.05+i*0.05, 0.5, "triangle", 0.05));
-}
-function playClubAnthem(code){
-  const url = clubAssets[code]?.anthemUrl;
   if(url){
-    const audio = new Audio(url);
-    audio.volume = 0.6;
-    audio.play().catch(()=>{});
+    const a = new Audio(url); a.volume = 0.7;
+    a.play().catch(()=>{});
+    duckMusicFor(a); // restores exactly when this custom clip ends
+    return;
+  }
+  const fn = awardId==="muppet" ? sadTrombone : awardId==="form" ? fanfare : awardId==="bigbrain" ? buzzer : pop;
+  fn();
+  duckMusicFor(SFX_DURATIONS[awardId] || SFX_DURATIONS.default);
+}
+// ---------- Intro sting: badge reveal + audio, 4 seconds, plays every visit ----------
+function synthTaDumFallback(){
+  const ctx = getCtx();
+  const now = ctx.currentTime;
+  const swell = ctx.createOscillator(); const sg = ctx.createGain();
+  swell.type = "sine"; swell.frequency.setValueAtTime(80, now);
+  swell.frequency.linearRampToValueAtTime(140, now+2.6);
+  sg.gain.setValueAtTime(0, now);
+  sg.gain.linearRampToValueAtTime(0.18, now+2.4);
+  sg.gain.linearRampToValueAtTime(0, now+2.65);
+  swell.connect(sg); sg.connect(ctx.destination);
+  swell.start(now); swell.stop(now+2.7);
+  const ta = ctx.createOscillator(); const tg = ctx.createGain();
+  ta.type = "triangle"; ta.frequency.setValueAtTime(349, now+1.4);
+  tg.gain.setValueAtTime(0, now+1.4);
+  tg.gain.linearRampToValueAtTime(0.12, now+1.45);
+  tg.gain.exponentialRampToValueAtTime(0.001, now+1.75);
+  ta.connect(tg); tg.connect(ctx.destination);
+  ta.start(now+1.4); ta.stop(now+1.8);
+  [98, 196, 294].forEach((f,i)=>{
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.type = i===0 ? "sine" : "triangle";
+    o.frequency.setValueAtTime(f, now+2.6);
+    g.gain.setValueAtTime(0.32/(i+1), now+2.6);
+    g.gain.exponentialRampToValueAtTime(0.001, now+3.4);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(now+2.6); o.stop(now+3.5);
+  });
+}
+function playIntroAudio(){
+  if(introSoundUrl){ const a = new Audio(introSoundUrl); a.volume = 0.85; a.play().catch(()=>{}); }
+  else { synthTaDumFallback(); }
+}
+let introRunning = false;
+function runIntro(onDone){
+  if(introRunning) return;
+  introRunning = true;
+  const overlay = document.getElementById("intro-overlay");
+  const bars = document.getElementById("nf-bars");
+  const glow = document.getElementById("nf-glow");
+  const badge = document.getElementById("intro-badge");
+  const shine = document.getElementById("intro-shine");
+  const flash = document.getElementById("intro-flash");
+
+  const badgeUrl = getCustomCrest(ident.club) || (() => {
+    const t = TEAMS[ident.club] || TEAMS.ARS;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 52"><path d="M24 2 L44 8 L44 24 Q44 42 24 50 Q4 42 4 24 L4 8 Z" fill="${t.p}" stroke="${t.s}" stroke-width="2"/><text x="24" y="31" font-family="Sora, sans-serif" font-size="15" font-weight="800" fill="${t.s}" text-anchor="middle">${ident.club}</text></svg>`;
+    return "data:image/svg+xml;base64," + btoa(svg);
+  })();
+
+  overlay.classList.remove("hidden");
+  badge.style.backgroundImage = `url(${badgeUrl})`;
+  badge.className = "intro-badge";
+  shine.classList.remove("go");
+  flash.classList.remove("go");
+  bars.classList.remove("go");
+  glow.classList.remove("go");
+
+  playIntroAudio();
+  requestAnimationFrame(()=>{ bars.classList.add("go"); glow.classList.add("go"); });
+
+  setTimeout(()=>{
+    badge.classList.add("pop");
+    shine.classList.add("go");
+    flash.classList.add("go");
+  }, 2600);
+
+  setTimeout(()=>{
+    badge.classList.remove("pop");
+    badge.classList.add("hold");
+  }, 3150);
+
+  setTimeout(()=>{
+    badge.classList.remove("hold");
+    badge.classList.add("dissolve");
+  }, 3680);
+
+  setTimeout(()=>{
+    overlay.classList.add("hidden");
+    introRunning = false;
+    if(onDone) onDone();
+  }, 4000);
+}
+document.getElementById("intro-skip").addEventListener("click", () => {
+  document.getElementById("intro-overlay").classList.add("hidden");
+  introRunning = false;
+  startPlaylist();
+});
+
+// ---------- Playlist: shared queue, quiet background volume, loops ----------
+let currentTrackIndex = 0;
+let currentAudioEl = null;
+const MUSIC_VOLUME = 0.25;
+function startPlaylist(){
+  if(playlistTracks.length === 0) return;
+  playTrack(currentTrackIndex);
+}
+function playTrack(index){
+  if(playlistTracks.length === 0) return;
+  currentTrackIndex = index % playlistTracks.length;
+  const track = playlistTracks[currentTrackIndex];
+  if(currentAudioEl){ currentAudioEl.pause(); }
+  currentAudioEl = new Audio(track.url);
+  currentAudioEl.volume = MUSIC_VOLUME;
+  currentAudioEl.play().catch(()=>{});
+  currentAudioEl.addEventListener("ended", () => playTrack(currentTrackIndex + 1));
+}
+
+// ---------- Ducking: fade the playlist down while a troll/award sound plays, then restore ----------
+function fadeAudioVolume(audioEl, to, ms){
+  if(!audioEl) return;
+  const from = audioEl.volume;
+  const steps = 12;
+  let i = 0;
+  const interval = setInterval(()=>{
+    i++;
+    audioEl.volume = Math.max(0, Math.min(1, from + (to-from)*(i/steps)));
+    if(i>=steps) clearInterval(interval);
+  }, ms/steps);
+}
+function duckMusicFor(sfxAudioElOrDurationMs){
+  if(!currentAudioEl) return;
+  fadeAudioVolume(currentAudioEl, 0.03, 180);
+  if(sfxAudioElOrDurationMs instanceof HTMLAudioElement){
+    sfxAudioElOrDurationMs.addEventListener("ended", () => fadeAudioVolume(currentAudioEl, MUSIC_VOLUME, 300), { once: true });
   } else {
-    crowdCheer();
+    setTimeout(()=> fadeAudioVolume(currentAudioEl, MUSIC_VOLUME, 300), sfxAudioElOrDurationMs);
   }
 }
 
 // ================= ADMIN =================
-// DEMO-ONLY auth: this check runs entirely in the browser's own JS, so anyone
-// can view-source and read the password in seconds — it provides NO real
-// security. It's here purely so you can see the upload UX. Before this goes
-// on the real deployed site, swap this block for Firebase Authentication
-// (signInWithEmailAndPassword) and gate the actual Storage/Firestore writes
-// with a security rule like `allow write: if request.auth.token.admin == true`
-// — that way the check happens server-side, not in readable client code.
+// Note: this login runs client-side, so it's a UI gate rather than real
+// security — acceptable for a small trusted office pool with nothing
+// sensitive at stake. Swap for Firebase Authentication if that ever changes.
 const ADMIN_USER = "yogesh";
 const ADMIN_PASS = "password@1";
 let isAdmin = sessionStorage.getItem("fpl_admin") === "1";
@@ -948,8 +1116,7 @@ document.getElementById("admin-gear").addEventListener("click", () => {
 
 function openAdminLogin(){
   openSheet(`
-    <div class="squad-header"><div style="font-size:22px">🔐</div><div><h2>Admin Login</h2><p>Upload club crests &amp; anthems</p></div></div>
-    <div class="admin-note">Heads up: this login is a UI demo only, not real security — see the code comment. Don't reuse a real password here.</div>
+    <div class="squad-header"><div style="font-size:22px">🔐</div><div><h2>Admin Login</h2><p>Manage club assets &amp; league settings</p></div></div>
     <div class="admin-field"><label>Username</label><input type="text" id="admin-user" autocomplete="off" /></div>
     <div class="admin-field"><label>Password</label><input type="password" id="admin-pass" /></div>
     <div class="admin-error" id="admin-error">Wrong username or password.</div>
@@ -972,10 +1139,11 @@ function openAdminPanel(tab){
   tab = tab || "clubs";
   openSheet(`
     <div class="squad-header"><div style="font-size:22px">🛠️</div><div><h2>Admin</h2><p>Manage club assets, banter media &amp; prize money</p></div></div>
-    <div class="admin-note">These settings live only in this browser for the demo (localStorage). On the real site, this writes straight to Firestore so everyone sees the same numbers/assets — see the note in code for the swap.</div>
     <div class="cap-gw-pills" id="admin-tabs">
       <button class="cap-gw-pill ${tab==='clubs'?'on':''}" data-tab="clubs">⚽ Clubs</button>
       <button class="cap-gw-pill ${tab==='banter'?'on':''}" data-tab="banter">🎭 Banter Media</button>
+      <button class="cap-gw-pill ${tab==='playlist'?'on':''}" data-tab="playlist">🎵 Playlist</button>
+      <button class="cap-gw-pill ${tab==='intro'?'on':''}" data-tab="intro">✨ Intro</button>
       <button class="cap-gw-pill ${tab==='prize'?'on':''}" data-tab="prize">💰 Prize Setup</button>
     </div>
     <div id="admin-tab-body"></div>
@@ -986,6 +1154,8 @@ function openAdminPanel(tab){
   });
   if(tab === "clubs") renderAdminClubsTab();
   else if(tab === "banter") renderAdminBanterTab();
+  else if(tab === "playlist") renderAdminPlaylistTab();
+  else if(tab === "intro") renderAdminIntroTab();
   else renderAdminPrizeTab();
 }
 
@@ -1057,10 +1227,6 @@ function renderAdminClubsTab(){
         <span>${clubAssets[code]?.bgUrl?'✓ BG':'🖼️ BG'}</span>
         <input type="file" accept="image/*" style="display:none" data-club-bg="${code}" />
       </label>
-      <label class="upload-mini-btn ${clubAssets[code]?.anthemUrl?'has':''}" id="sndbtn-${code}">
-        <span>${clubAssets[code]?.anthemUrl?'✓ Anthem':'🎵 Anthem'}</span>
-        <input type="file" accept="audio/*" style="display:none" data-club-snd="${code}" />
-      </label>
     </div>
   `).join("");
 
@@ -1108,23 +1274,94 @@ function renderAdminClubsTab(){
       }
     });
   });
-  document.querySelectorAll("[data-club-snd]").forEach(inp => {
-    inp.addEventListener("change", async (e) => {
-      const file = e.target.files[0]; if(!file) return;
-      const code = inp.dataset.clubSnd;
-      const btn = document.getElementById("sndbtn-"+code);
-      btn.querySelector("span").textContent = "Uploading…";
+}
+
+// ---------- Admin: Playlist (replaces per-club anthems — one shared, admin-curated queue) ----------
+async function savePlaylist(){
+  await setDoc(doc(db, "adminConfig/playlist"), { tracks: playlistTracks });
+}
+function renderAdminPlaylistTab(){
+  document.getElementById("admin-tab-body").innerHTML = `
+    <p class="sub" style="margin-bottom:10px">Add classic Premier League theme songs (or anything you like) — they play in this order for everyone, on a loop, at quiet background volume.</p>
+    <label class="add-song-btn" style="display:inline-block;background:var(--grad);color:#0D0715;border-radius:10px;padding:8px 14px;font-family:var(--font-d);font-weight:700;font-size:12px;cursor:pointer;margin-bottom:12px;">+ Add Song(s)
+      <input type="file" id="song-input" accept="audio/*" multiple style="display:none" />
+    </label>
+    <div id="playlist-admin-list"></div>
+  `;
+  renderPlaylistAdminList();
+  document.getElementById("song-input").addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files);
+    e.target.value = "";
+    for(const file of files){
+      showToast(`Uploading ${file.name}…`, 1500);
       try {
         const url = await uploadToCloudinary(file);
-        await saveClubAsset(code, "anthemUrl", url);
-        btn.classList.add("has");
-        btn.querySelector("span").textContent = "✓ Anthem";
-        showToast(`${CLUB_NAMES[code]} anthem set — try picking it as your favourite club to hear it`);
+        playlistTracks.push({ name: file.name.replace(/\.[^/.]+$/, ""), url });
       } catch(err){
-        btn.querySelector("span").textContent = "🎵 Anthem";
-        showToast("Upload failed — try again");
+        showToast(`Failed to upload ${file.name}`);
       }
-    });
+    }
+    await savePlaylist();
+    renderPlaylistAdminList();
+    showToast("Playlist updated");
+  });
+}
+function renderPlaylistAdminList(){
+  const el = document.getElementById("playlist-admin-list");
+  if(playlistTracks.length === 0){
+    el.innerHTML = `<div class="sub">No songs yet — add a few to get started.</div>`;
+    return;
+  }
+  el.innerHTML = playlistTracks.map((s,i) => `
+    <div class="club-upload-row">
+      <div class="song-pos-num">${i+1}</div>
+      <div class="cn" style="flex:1;">${s.name}</div>
+      <button class="upload-mini-btn" data-song-up="${i}" ${i===0?'disabled':''}>▲</button>
+      <button class="upload-mini-btn" data-song-down="${i}" ${i===playlistTracks.length-1?'disabled':''}>▼</button>
+      <button class="upload-mini-btn" data-song-remove="${i}" style="color:#FF4D6D;">✕</button>
+    </div>
+  `).join("");
+  el.querySelectorAll("[data-song-up]").forEach(btn => btn.addEventListener("click", async () => {
+    const i = parseInt(btn.dataset.songUp);
+    [playlistTracks[i-1], playlistTracks[i]] = [playlistTracks[i], playlistTracks[i-1]];
+    await savePlaylist(); renderPlaylistAdminList();
+  }));
+  el.querySelectorAll("[data-song-down]").forEach(btn => btn.addEventListener("click", async () => {
+    const i = parseInt(btn.dataset.songDown);
+    [playlistTracks[i], playlistTracks[i+1]] = [playlistTracks[i+1], playlistTracks[i]];
+    await savePlaylist(); renderPlaylistAdminList();
+  }));
+  el.querySelectorAll("[data-song-remove]").forEach(btn => btn.addEventListener("click", async () => {
+    const i = parseInt(btn.dataset.songRemove);
+    playlistTracks.splice(i, 1);
+    await savePlaylist(); renderPlaylistAdminList();
+  }));
+}
+
+// ---------- Admin: Intro sound (one global sting, plays with the badge reveal) ----------
+function renderAdminIntroTab(){
+  document.getElementById("admin-tab-body").innerHTML = `
+    <p class="sub" style="margin-bottom:10px">One shared sound that plays when the badge reveals itself, ~4 seconds, timed to the animation. Without one uploaded, a synthesized fallback plays instead.</p>
+    <label class="upload-mini-btn ${introSoundUrl?'has':''}" id="introsndbtn" style="display:inline-flex;">
+      <span>${introSoundUrl?'✓ Intro sound set':'🎵 Upload intro sound'}</span>
+      <input type="file" id="intro-sound-file" accept="audio/*" style="display:none" />
+    </label>
+  `;
+  document.getElementById("intro-sound-file").addEventListener("change", async (e) => {
+    const file = e.target.files[0]; if(!file) return;
+    const btn = document.getElementById("introsndbtn");
+    btn.querySelector("span").textContent = "Uploading…";
+    try {
+      const url = await uploadToCloudinary(file);
+      introSoundUrl = url;
+      await setDoc(doc(db, "adminConfig/introSound"), { url });
+      btn.classList.add("has");
+      btn.querySelector("span").textContent = "✓ Intro sound set";
+      showToast("Intro sound saved");
+    } catch(err){
+      btn.querySelector("span").textContent = "🎵 Upload intro sound";
+      showToast("Upload failed — try again");
+    }
   });
 }
 
@@ -1251,7 +1488,7 @@ document.getElementById("awards").addEventListener("click", async (e)=>{
   const a = computeAwards().find(x=>x.id===card.dataset.award);
   const five = top5(a.metric, a.desc);
   const winner = five[0];
-  soundFor(a.id)();
+  playAwardSfx(a.id);
   const listHtml = five.map((m,i) => `
     <div class="top5-row"><div class="n">${i+1}</div><div class="t">${m.teamName}</div><div class="v">${Math.round(a.metric(m)*10)/10} ${a.unit}</div></div>
   `).join("");
@@ -1503,379 +1740,4 @@ async function renderChipTimeline(){
 
 // ---------- Insights: Captaincy Alpha (real points value, not just a hit-rate %) ----------
 async function captaincyWeeklyBreakdown(entryId){
-  const squadRows = await getManagerSquadHistory(entryId);
-  return squadRows.map(row => {
-    const captain = row.starting.find(p => p.isCaptain) || row.starting[0];
-    const others = row.starting.filter(p => !p.isCaptain);
-    const bestAlt = others.reduce((best,p) => (!best || p.pts > best.pts) ? p : best, null) || captain;
-    return {
-      gw: row.gw,
-      capElement: captain?.element, capPts: captain?.pts ?? 0,
-      altElement: bestAlt?.element, altPts: bestAlt?.pts ?? 0,
-      delta: (captain?.pts ?? 0) - (bestAlt?.pts ?? 0),
-    };
-  });
-}
-async function leagueBestCaptainForGw(gw){
-  const snap = await getDoc(doc(db, `gwPlayerPoints/gw${gw}`));
-  if(!snap.exists()) return null;
-  const points = snap.data().points || {};
-  let bestId = null, bestPts = -1;
-  for(const [id,pts] of Object.entries(points)){ if(pts > bestPts){ bestPts = pts; bestId = id; } }
-  return bestId ? { id: bestId, pts: bestPts, ...playerInfo(bestId) } : null;
-}
-async function renderCaptaincyReport(){
-  const el = document.getElementById("cap-report");
-  el.innerHTML = `<div class="sub">Loading…</div>`;
-  const breakdowns = await Promise.all(managers.map(m => captaincyWeeklyBreakdown(m.id)));
-  const scored = managers.map((m,i) => ({ m, rows: breakdowns[i], alpha: breakdowns[i].reduce((s,r)=>s+r.delta,0) }))
-    .sort((a,b)=>b.alpha-a.alpha);
-  if(scored.every(s => s.rows.length===0)){
-    el.innerHTML = `<div class="sub">No synced gameweeks yet — this fills in once the season's underway.</div>`;
-    return;
-  }
-  const maxAbs = Math.max(...scored.map(s=>Math.abs(s.alpha)), 1);
-  el.innerHTML = scored.map(s => {
-    const pct = Math.min(Math.abs(s.alpha)/maxAbs*100, 100);
-    const positive = s.alpha >= 0;
-    return `<div class="cap-row" data-cap-mgr="${s.m.id}">
-      <div class="nm">${s.m.teamName}</div>
-      <div class="cap-bar-bg"><div class="cap-bar-fill" data-fillw="${pct}" style="background:${positive?'var(--grad)':'var(--red)'}"></div></div>
-      <div class="pct" style="color:${positive?'var(--accent2)':'var(--red)'}">${positive?'+':''}${s.alpha}</div>
-    </div>`;
-  }).join("");
-  requestAnimationFrame(()=> requestAnimationFrame(()=>{
-    document.querySelectorAll('#cap-report [data-fillw]').forEach(el=>{ el.style.width = el.dataset.fillw + "%"; });
-  }));
-}
-
-// ---------- Captaincy detail drill-down: Overall breakdown or a single GW head-to-head ----------
-let capDetailGw = "overall";
-async function openCaptaincyDetail(mgrId){
-  const m = managers.find(x=>x.id===mgrId);
-  capDetailGw = "overall";
-  openSheet(`
-    <div class="squad-header"><div style="font-size:22px">©️</div><div><h2>${m.teamName}</h2><p>${m.managerName} · captaincy breakdown</p></div></div>
-    <div class="cap-gw-pills" id="cap-gw-pills"><div class="sub">Loading…</div></div>
-    <div id="cap-detail-body"></div>
-  `);
-  const rows = await captaincyWeeklyBreakdown(m.id);
-  if(rows.length===0){
-    document.getElementById("cap-gw-pills").innerHTML = "";
-    document.getElementById("cap-detail-body").innerHTML = `<div class="sub">No synced gameweeks yet for this manager.</div>`;
-    return;
-  }
-  document.getElementById("cap-gw-pills").innerHTML = `
-    <button class="cap-gw-pill on" data-gw="overall">OVERALL</button>
-    ${rows.map(r=>`<button class="cap-gw-pill" data-gw="${r.gw}">GW${r.gw}</button>`).join("")}
-  `;
-  renderCaptaincyDetailBody(m, rows);
-  document.getElementById("cap-gw-pills").addEventListener("click",(e)=>{
-    const btn = e.target.closest(".cap-gw-pill"); if(!btn) return;
-    capDetailGw = btn.dataset.gw === "overall" ? "overall" : parseInt(btn.dataset.gw);
-    document.querySelectorAll(".cap-gw-pill").forEach(p=>p.classList.remove("on"));
-    btn.classList.add("on");
-    renderCaptaincyDetailBody(m, rows);
-  });
-}
-async function renderCaptaincyDetailBody(m, rows){
-  const body = document.getElementById("cap-detail-body");
-  if(capDetailGw === "overall"){
-    const total = rows.reduce((s,r)=>s+r.delta,0);
-    body.innerHTML = `
-      <div class="cap-detail-header">
-        <div class="sub" style="margin:0">Season total swing</div>
-        <div class="tot" style="color:${total>=0?'var(--accent2)':'var(--red)'}">${total>=0?'+':''}${total}</div>
-      </div>
-      ${rows.map(r => {
-        const cap = playerInfo(r.capElement), alt = playerInfo(r.altElement);
-        return `
-        <div class="cap-weekly-row">
-          <div class="gw">GW${r.gw}</div>
-          <div class="who"><span class="capn">${cap.n}</span> (C) — ${r.capPts} pts
-            ${r.delta<0 ? `<span class="altn">Missed: ${alt.n} scored ${r.altPts}</span>` : `<span class="altn">Best pick in your squad ✓</span>`}
-          </div>
-          <div class="delta" style="color:${r.delta>=0?'var(--accent2)':'var(--red)'}">${r.delta>=0?'+':''}${r.delta}</div>
-        </div>`;
-      }).join("")}
-    `;
-  } else {
-    const r = rows.find(x=>x.gw===capDetailGw);
-    if(!r){ body.innerHTML = `<div class="sub">No data for that gameweek.</div>`; return; }
-    body.innerHTML = `<div class="sub">Loading…</div>`;
-    const leagueBest = await leagueBestCaptainForGw(capDetailGw);
-    const cap = playerInfo(r.capElement), alt = playerInfo(r.altElement);
-    const capWon = r.delta >= 0;
-    body.innerHTML = `
-      <div class="cap-h2h">
-        <div class="side ${capWon?'win':''}">
-          <div class="lbl">You captained</div>
-          ${jerseySvg(cap.team, 'capdet1')}
-          <div class="nm2">${cap.n}</div>
-          <div class="sc">${r.capPts}</div>
-        </div>
-        <div class="side ${!capWon?'win':''}">
-          <div class="lbl">Best in your squad</div>
-          ${jerseySvg(alt.team, 'capdet2')}
-          <div class="nm2">${alt.n}</div>
-          <div class="sc">${r.altPts}</div>
-        </div>
-      </div>
-      <div class="insight">
-        ${r.delta === 0 ? `Spot on — ${cap.n} was the right captain call this week.` :
-          r.delta > 0 ? `Good call — captaining ${cap.n} over ${alt.n} gained you <b>+${r.delta} pts</b> this gameweek.` :
-          `Costly one — captaining ${cap.n} instead of ${alt.n} cost you <b>${r.delta} pts</b> this gameweek.`}
-      </div>
-      ${leagueBest ? `<div class="cap-league-note">📊 League-wide, the best possible captain in GW${capDetailGw} was <b>${leagueBest.n}</b> with ${leagueBest.pts} pts — worth knowing for next time, even if you didn't own them.</div>` : ""}
-    `;
-  }
-}
-document.getElementById("cap-report").addEventListener("click",(e)=>{
-  const row = e.target.closest(".cap-row"); if(!row) return;
-  openCaptaincyDetail(parseInt(row.dataset.capMgr));
-});
-
-// ---------- Insights: Doppelgänger (most similar squad to yours, or league-wide if no identity set) ----------
-function squadOverlap(startingA, startingB){
-  const setB = new Set(startingB);
-  return startingA.filter(id=>setB.has(id)).length;
-}
-async function renderDoppelganger(){
-  const el = document.getElementById("doppel-card");
-  el.innerHTML = `<div class="sub">Loading…</div>`;
-  const rollup = await getLatestSquadsRollup();
-  if(!rollup){ el.innerHTML = `<div class="sub">No synced gameweeks yet — this fills in once squads are locked in.</div>`; return; }
-  const entries = Object.entries(rollup.entries); // [entryId, {teamName, starting, ...}]
-  const me = ident.team ? entries.find(([id,e])=>e.teamName===ident.team) : null;
-  if(me){
-    const [meId, meData] = me;
-    const rest = entries.filter(([id])=>id!==meId);
-    const best = rest.map(([id,e])=>({teamName:e.teamName, overlap:squadOverlap(meData.starting, e.starting)})).sort((a,b)=>b.overlap-a.overlap)[0];
-    if(!best){ el.innerHTML = `<div class="sub">Not enough managers synced yet to compare.</div>`; return; }
-    el.innerHTML = `
-      <h3>${best.teamName} is basically running your team</h3>
-      <div class="sub">${best.overlap} of ${meData.starting.length} starters in common with ${ident.team} — either great minds or zero originality.</div>
-    `;
-  } else {
-    let best = {overlap:-1, a:null, b:null};
-    for(let i=0;i<entries.length;i++) for(let j=i+1;j<entries.length;j++){
-      const o = squadOverlap(entries[i][1].starting, entries[j][1].starting);
-      if(o>best.overlap) best = {overlap:o, a:entries[i][1].teamName, b:entries[j][1].teamName};
-    }
-    if(!best.a){ el.innerHTML = `<div class="sub">Not enough managers synced yet to compare.</div>`; return; }
-    el.innerHTML = `
-      <h3>${best.a} & ${best.b}</h3>
-      <div class="sub">Most similar starting XIs in the league — ${best.overlap} players in common. Set your identity (top-right) to see who your personal doppelgänger is.</div>
-    `;
-  }
-}
-
-// ---------- Copy Weekly Recap ----------
-function buildRecapText(){
-  if(!GW_COUNT) return null;
-  const gwWinner = [...managers].sort((a,b)=>b.history.find(h=>h.gw===GW_COUNT).points-a.history.find(h=>h.gw===GW_COUNT).points)[0];
-  const muppet = [...managers].sort((a,b)=>a.history.find(h=>h.gw===GW_COUNT).points-b.history.find(h=>h.gw===GW_COUNT).points)[0];
-  const sortedTotal = [...managers].sort((a,b)=>b.totalPoints-a.totalPoints);
-  const gap = sortedTotal[0].totalPoints - sortedTotal[1].totalPoints;
-  return [
-    `🏆 K&A Paid FPL — GW${GW_COUNT} Recap`,
-    ``,
-    `GW Winner: ${gwWinner.teamName} (${gwWinner.history.find(h=>h.gw===GW_COUNT).points} pts)`,
-    `🥶 Muppet of the Week: ${muppet.teamName} (${muppet.history.find(h=>h.gw===GW_COUNT).points} pts)`,
-    `🔥 Title race: ${sortedTotal[0].teamName} leads ${sortedTotal[1].teamName} by ${gap} pt${gap===1?'':'s'}`,
-    `📊 Overall leader: ${sortedTotal[0].teamName} — ${sortedTotal[0].totalPoints} pts`,
-    ``,
-    `Full table & awards → office-fpl-league.web.app`
-  ].join("\n");
-}
-document.getElementById("copy-recap-btn")?.addEventListener("click", async () => {
-  const text = buildRecapText();
-  if(!text){ showToast("No gameweek synced yet — nothing to recap"); return; }
-  try {
-    await navigator.clipboard.writeText(text);
-    showToast("📋 Recap copied — paste it in the group chat");
-  } catch(e){
-    showToast("Couldn't copy automatically — long-press to select the text manually");
-  }
-});
-
-// ---------- Season Report preview ----------
-document.getElementById("season-report-btn")?.addEventListener("click", () => {
-  const sorted = [...managers].sort((a,b)=>b.totalPoints-a.totalPoints);
-  const awards = computeAwards();
-  const cfg = getPrizeConfig();
-  openSheet(`
-    <div class="squad-header"><div style="font-size:22px">📄</div><div><h2>Season Report</h2><p>Preview — final numbers lock at GW38</p></div></div>
-    <div class="section-title" style="margin-top:0"><span class="bar"></span>Final Standings (top 5)</div>
-    ${sorted.slice(0,5).map((m,i)=>`<div class="season-report-line"><span>${i+1}. ${m.teamName}</span><span>${m.totalPoints} pts</span></div>`).join("")}
-    <div class="section-title"><span class="bar"></span>Award Winners</div>
-    ${GW_COUNT ? awards.map(a=>`<div class="season-report-line"><span>${a.emoji} ${a.name}</span><span>${top5(a.metric,a.desc)[0].teamName}</span></div>`).join("") : `<div class="sub">Not available until GW1 wraps</div>`}
-    <div class="section-title"><span class="bar"></span>Prize Breakdown</div>
-    <div class="season-report-line"><span>Total pot</span><span>₹${cfg.totalCollected.toLocaleString()}</span></div>
-    <div class="season-report-line"><span>1st / 2nd / 3rd</span><span>₹${cfg.first} / ₹${cfg.second} / ₹${cfg.third}</span></div>
-    <div class="season-report-line"><span>Per gameweek</span><span>₹${cfg.perMW} &times; 38</span></div>
-  `);
-});
-
-// ---------- Insights: Template vs Differential ----------
-async function renderTemplateDifferential(){
-  const listEl = document.getElementById("template-list");
-  const diffEl = document.getElementById("diff-sub");
-  listEl.innerHTML = `<div class="sub">Loading…</div>`;
-  const rollup = await getLatestSquadsRollup();
-  if(!rollup){
-    listEl.innerHTML = `<div class="sub">No synced gameweeks yet.</div>`;
-    diffEl.textContent = "";
-    return;
-  }
-  const entries = Object.values(rollup.entries);
-  const ownership = {};
-  entries.forEach(e => e.starting.forEach(id => { ownership[id] = (ownership[id]||0)+1; }));
-  const ranked = Object.entries(ownership).sort((a,b)=>b[1]-a[1]).slice(0,6);
-  listEl.innerHTML = ranked.map(([id,count]) => `
-    <div class="own-row"><div class="nm">${playerInfo(id).n}</div><div class="cnt">${count}/${entries.length} squads</div></div>`).join("");
-
-  const avgOwnership = e => e.starting.reduce((s,id)=> s + (ownership[id]||0), 0) / e.starting.length;
-  const diffKing = [...entries].sort((a,b)=> avgOwnership(a) - avgOwnership(b))[0];
-  diffEl.textContent = `${diffKing.teamName} — lowest average ownership across their starting XI (${avgOwnership(diffKing).toFixed(1)} managers/player on average). Genuinely off the beaten path.`;
-}
-
-// ---------- Squad sheet with jerseys + tap-for-GW-history dropdown ----------
-const overlay = document.getElementById("overlay");
-const sheet = document.getElementById("sheet");
-function openSheet(html){ document.getElementById("sheet-content").innerHTML = html; overlay.classList.add("show"); sheet.classList.add("show"); }
-function closeSheet(){ overlay.classList.remove("show"); sheet.classList.remove("show"); }
-overlay.addEventListener("click", closeSheet);
-document.getElementById("sheet-close").addEventListener("click", closeSheet);
-
-let jUid = 0;
-function jerseyCard(elementId, pts, isCap){
-  jUid++;
-  const uid = jUid;
-  const info = playerInfo(elementId);
-  return `
-    <div class="jersey-wrap ${isCap?'cap-ring':''}">
-      <button class="jersey-btn" data-element="${elementId}" data-uid="${uid}">
-        ${jerseySvg(info.team, uid)}
-        <div class="jname">${info.n}${isCap?' (C)':''}</div>
-        <div class="jteam">${info.team}</div>
-      </button>
-      <div class="jpts">${pts}</div>
-    </div>`;
-}
-const gwPlayerPointsCache = {};
-async function getGwPlayerPoints(gw){
-  if(gwPlayerPointsCache[gw]) return gwPlayerPointsCache[gw];
-  const snap = await getDoc(doc(db, `gwPlayerPoints/gw${gw}`));
-  const data = snap.exists() ? snap.data().points : {};
-  gwPlayerPointsCache[gw] = data;
-  return data;
-}
-document.getElementById("standings").addEventListener("click", async (e)=>{
-  const row = e.target.closest(".row"); if(!row) return;
-  const m = managers.find(x=>x.id==row.dataset.mgr);
-  const gwForSquad = mode==="overall" ? GW_COUNT : mode;
-  if(!gwForSquad){ openSheet(`<div class="sub">No synced gameweeks yet.</div>`); return; }
-  openSheet(`<div class="sub">Loading squad…</div>`);
-  const squad = await getManagerSquad(m.id, gwForSquad);
-  if(!squad){
-    openSheet(`
-      <div class="squad-header"><div class="avatar">${initials(m.teamName)}</div><div><h2>${m.teamName}</h2><p>${m.managerName}</p></div></div>
-      <div class="sub">Squad not synced for GW${gwForSquad} yet.</div>
-    `);
-    return;
-  }
-  const posOrder = {GKP:0,DEF:1,MID:2,FWD:3};
-  const lines = [[],[],[],[]];
-  squad.starting.forEach(p => { const pos = playerInfo(p.element).pos; lines[posOrder[pos]].push(p); });
-  const histEntry = m.history.find(h=>h.gw===gwForSquad);
-  const pitchHtml = lines.map(line => `<div class="pline">${line.map(p=>jerseyCard(p.element, p.pts, p.isCaptain)).join("")}</div>`).join("");
-  const benchHtml = squad.bench.map(p=>jerseyCard(p.element, p.pts, false)).join("");
-  openSheet(`
-    <div class="squad-header">
-      <div class="avatar">${initials(m.teamName)}</div>
-      <div><h2>${m.teamName}</h2><p>${m.managerName} · GW${gwForSquad}: ${histEntry?.points ?? '—'} pts</p></div>
-    </div>
-    <div class="pitch">${pitchHtml}</div>
-    <div class="bench-title">Bench</div>
-    <div class="bench-row">${benchHtml}</div>
-  `);
-  document.getElementById("sheet-content").addEventListener("click", async (ev)=>{
-    const btn = ev.target.closest(".jersey-btn"); if(!btn) return;
-    const elementId = btn.dataset.element;
-    const info = playerInfo(elementId);
-    const existing = btn.parentElement.querySelector(".gw-dropdown");
-    if(existing){ existing.remove(); return; }
-    document.querySelectorAll(".gw-dropdown").forEach(d=>d.remove());
-    const dd = document.createElement("div");
-    dd.className = "gw-dropdown";
-    dd.innerHTML = `<div class="gwd-title">${info.n} · by GW</div><div class="gwd-bars">Loading…</div>`;
-    btn.parentElement.appendChild(dd);
-    const weekly = [];
-    for(let gw=1; gw<=GW_COUNT; gw++){
-      const pts = await getGwPlayerPoints(gw);
-      weekly.push(pts[elementId] ?? 0);
-    }
-    const maxV = Math.max(...weekly, 1);
-    const bars = weekly.map((v,i)=>`<div class="gwd-bar" style="height:${Math.max(v/maxV*30,3)}px"><b>${v}</b><span>${i+1}</span></div>`).join("");
-    dd.querySelector(".gwd-bars").innerHTML = bars;
-  });
-});
-
-function renderAll(){ renderHeroStats(); renderStandings(); }
-
-async function boot(){
-  await loadCoreData();
-  await loadAdminData();
-
-  renderLeagueHeader();
-  renderModeSelect();
-  renderAll();
-  renderAwards();
-  renderPrize();
-  renderMomentum();
-  renderLeadChanges();
-  renderH2H();
-  renderNemesis();
-  renderDoppelganger();
-  renderChipTimeline();
-  renderCaptaincyReport();
-  renderTemplateDifferential();
-  renderHighlights();
-
-  renderDeadline();
-  setInterval(renderDeadline, 1000);
-  renderNptClock();
-  setInterval(renderNptClock, 1000);
-  setTimeout(checkRivalAlert, 900);
-
-  if(ident.club) applyClubTheme(ident.club);
-  if(!ident.team || !ident.club){ openOnboarding(1); } else { renderViewingPill(); }
-
-  // While a gameweek is live (not yet final), quietly re-pull standings every
-  // couple of minutes so people watching during a match don't have to keep
-  // manually refreshing. Stops automatically once bonus points are confirmed.
-  if(GW_COUNT && !IS_FINAL){
-    const liveRefresh = setInterval(async () => {
-      await loadCoreData();
-      renderLeagueHeader();
-      renderAll();
-      renderHighlights();
-      renderPrize();
-      if(IS_FINAL) clearInterval(liveRefresh); // fully settled — stop polling
-    }, 120000); // every 2 minutes
-  }
-}
-boot();
-
-document.querySelectorAll(".tab").forEach(btn=>{
-  btn.addEventListener("click",()=>{
-    document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
-    document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
-    btn.classList.add("active");
-    document.getElementById("view-"+btn.dataset.view).classList.add("active");
-  });
-});
-</script>
-</body>
-</html>
+  const squadRows = await getManagerS
