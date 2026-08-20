@@ -1740,4 +1740,392 @@ async function renderChipTimeline(){
 
 // ---------- Insights: Captaincy Alpha (real points value, not just a hit-rate %) ----------
 async function captaincyWeeklyBreakdown(entryId){
-  const squadRows = await getManagerS
+  const squadRows = await getManagerSquadHistory(entryId);
+  return squadRows.map(row => {
+    const captain = row.starting.find(p => p.isCaptain) || row.starting[0];
+    const others = row.starting.filter(p => !p.isCaptain);
+    const bestAlt = others.reduce((best,p) => (!best || p.pts > best.pts) ? p : best, null) || captain;
+    return {
+      gw: row.gw,
+      capElement: captain?.element, capPts: captain?.pts ?? 0,
+      altElement: bestAlt?.element, altPts: bestAlt?.pts ?? 0,
+      delta: (captain?.pts ?? 0) - (bestAlt?.pts ?? 0),
+    };
+  });
+}
+async function leagueBestCaptainForGw(gw){
+  const snap = await getDoc(doc(db, `gwPlayerPoints/gw${gw}`));
+  if(!snap.exists()) return null;
+  const points = snap.data().points || {};
+  let bestId = null, bestPts = -1;
+  for(const [id,pts] of Object.entries(points)){ if(pts > bestPts){ bestPts = pts; bestId = id; } }
+  return bestId ? { id: bestId, pts: bestPts, ...playerInfo(bestId) } : null;
+}
+async function renderCaptaincyReport(){
+  const el = document.getElementById("cap-report");
+  el.innerHTML = `<div class="sub">Loading…</div>`;
+  const breakdowns = await Promise.all(managers.map(m => captaincyWeeklyBreakdown(m.id)));
+  const scored = managers.map((m,i) => ({ m, rows: breakdowns[i], alpha: breakdowns[i].reduce((s,r)=>s+r.delta,0) }))
+    .sort((a,b)=>b.alpha-a.alpha);
+  if(scored.every(s => s.rows.length===0)){
+    el.innerHTML = `<div class="sub">No synced gameweeks yet — this fills in once the season's underway.</div>`;
+    return;
+  }
+  const maxAbs = Math.max(...scored.map(s=>Math.abs(s.alpha)), 1);
+  el.innerHTML = scored.map(s => {
+    const pct = Math.min(Math.abs(s.alpha)/maxAbs*100, 100);
+    const positive = s.alpha >= 0;
+    return `<div class="cap-row" data-cap-mgr="${s.m.id}">
+      <div class="nm">${s.m.teamName}</div>
+      <div class="cap-bar-bg"><div class="cap-bar-fill" data-fillw="${pct}" style="background:${positive?'var(--grad)':'var(--red)'}"></div></div>
+      <div class="pct" style="color:${positive?'var(--accent2)':'var(--red)'}">${positive?'+':''}${s.alpha}</div>
+    </div>`;
+  }).join("");
+  requestAnimationFrame(()=> requestAnimationFrame(()=>{
+    document.querySelectorAll('#cap-report [data-fillw]').forEach(el=>{ el.style.width = el.dataset.fillw + "%"; });
+  }));
+}
+
+// ---------- Captaincy detail drill-down: Overall breakdown or a single GW head-to-head ----------
+let capDetailGw = "overall";
+async function openCaptaincyDetail(mgrId){
+  const m = managers.find(x=>x.id===mgrId);
+  capDetailGw = "overall";
+  openSheet(`
+    <div class="squad-header"><div style="font-size:22px">©️</div><div><h2>${m.teamName}</h2><p>${m.managerName} · captaincy breakdown</p></div></div>
+    <div class="cap-gw-pills" id="cap-gw-pills"><div class="sub">Loading…</div></div>
+    <div id="cap-detail-body"></div>
+  `);
+  const rows = await captaincyWeeklyBreakdown(m.id);
+  if(rows.length===0){
+    document.getElementById("cap-gw-pills").innerHTML = "";
+    document.getElementById("cap-detail-body").innerHTML = `<div class="sub">No synced gameweeks yet for this manager.</div>`;
+    return;
+  }
+  document.getElementById("cap-gw-pills").innerHTML = `
+    <button class="cap-gw-pill on" data-gw="overall">OVERALL</button>
+    ${rows.map(r=>`<button class="cap-gw-pill" data-gw="${r.gw}">GW${r.gw}</button>`).join("")}
+  `;
+  renderCaptaincyDetailBody(m, rows);
+  document.getElementById("cap-gw-pills").addEventListener("click",(e)=>{
+    const btn = e.target.closest(".cap-gw-pill"); if(!btn) return;
+    capDetailGw = btn.dataset.gw === "overall" ? "overall" : parseInt(btn.dataset.gw);
+    document.querySelectorAll(".cap-gw-pill").forEach(p=>p.classList.remove("on"));
+    btn.classList.add("on");
+    renderCaptaincyDetailBody(m, rows);
+  });
+}
+async function renderCaptaincyDetailBody(m, rows){
+  const body = document.getElementById("cap-detail-body");
+  if(capDetailGw === "overall"){
+    const total = rows.reduce((s,r)=>s+r.delta,0);
+    body.innerHTML = `
+      <div class="cap-detail-header">
+        <div class="sub" style="margin:0">Season total swing</div>
+        <div class="tot" style="color:${total>=0?'var(--accent2)':'var(--red)'}">${total>=0?'+':''}${total}</div>
+      </div>
+      ${rows.map(r => {
+        const cap = playerInfo(r.capElement), alt = playerInfo(r.altElement);
+        return `
+        <div class="cap-weekly-row">
+          <div class="gw">GW${r.gw}</div>
+          <div class="who"><span class="capn">${cap.n}</span> (C) — ${r.capPts} pts
+            ${r.delta<0 ? `<span class="altn">Missed: ${alt.n} scored ${r.altPts}</span>` : `<span class="altn">Best pick in your squad ✓</span>`}
+          </div>
+          <div class="delta" style="color:${r.delta>=0?'var(--accent2)':'var(--red)'}">${r.delta>=0?'+':''}${r.delta}</div>
+        </div>`;
+      }).join("")}
+    `;
+  } else {
+    const r = rows.find(x=>x.gw===capDetailGw);
+    if(!r){ body.innerHTML = `<div class="sub">No data for that gameweek.</div>`; return; }
+    body.innerHTML = `<div class="sub">Loading…</div>`;
+    const leagueBest = await leagueBestCaptainForGw(capDetailGw);
+    const cap = playerInfo(r.capElement), alt = playerInfo(r.altElement);
+    const capWon = r.delta >= 0;
+    body.innerHTML = `
+      <div class="cap-h2h">
+        <div class="side ${capWon?'win':''}">
+          <div class="lbl">You captained</div>
+          ${jerseySvg(cap.team, 'capdet1')}
+          <div class="nm2">${cap.n}</div>
+          <div class="sc">${r.capPts}</div>
+        </div>
+        <div class="side ${!capWon?'win':''}">
+          <div class="lbl">Best in your squad</div>
+          ${jerseySvg(alt.team, 'capdet2')}
+          <div class="nm2">${alt.n}</div>
+          <div class="sc">${r.altPts}</div>
+        </div>
+      </div>
+      <div class="insight">
+        ${r.delta === 0 ? `Spot on — ${cap.n} was the right captain call this week.` :
+          r.delta > 0 ? `Good call — captaining ${cap.n} over ${alt.n} gained you <b>+${r.delta} pts</b> this gameweek.` :
+          `Costly one — captaining ${cap.n} instead of ${alt.n} cost you <b>${r.delta} pts</b> this gameweek.`}
+      </div>
+      ${leagueBest ? `<div class="cap-league-note">📊 League-wide, the best possible captain in GW${capDetailGw} was <b>${leagueBest.n}</b> with ${leagueBest.pts} pts — worth knowing for next time, even if you didn't own them.</div>` : ""}
+    `;
+  }
+}
+document.getElementById("cap-report").addEventListener("click",(e)=>{
+  const row = e.target.closest(".cap-row"); if(!row) return;
+  openCaptaincyDetail(parseInt(row.dataset.capMgr));
+});
+
+// ---------- Insights: Doppelgänger (most similar squad to yours, or league-wide if no identity set) ----------
+function squadOverlap(startingA, startingB){
+  const setB = new Set(startingB);
+  return startingA.filter(id=>setB.has(id)).length;
+}
+async function renderDoppelganger(){
+  const el = document.getElementById("doppel-card");
+  el.innerHTML = `<div class="sub">Loading…</div>`;
+  const rollup = await getLatestSquadsRollup();
+  if(!rollup){ el.innerHTML = `<div class="sub">No synced gameweeks yet — this fills in once squads are locked in.</div>`; return; }
+  const entries = Object.entries(rollup.entries); // [entryId, {teamName, starting, ...}]
+  const me = ident.team ? entries.find(([id,e])=>e.teamName===ident.team) : null;
+  if(me){
+    const [meId, meData] = me;
+    const rest = entries.filter(([id])=>id!==meId);
+    const best = rest.map(([id,e])=>({teamName:e.teamName, overlap:squadOverlap(meData.starting, e.starting)})).sort((a,b)=>b.overlap-a.overlap)[0];
+    if(!best){ el.innerHTML = `<div class="sub">Not enough managers synced yet to compare.</div>`; return; }
+    el.innerHTML = `
+      <h3>${best.teamName} is basically running your team</h3>
+      <div class="sub">${best.overlap} of ${meData.starting.length} starters in common with ${ident.team} — either great minds or zero originality.</div>
+    `;
+  } else {
+    let best = {overlap:-1, a:null, b:null};
+    for(let i=0;i<entries.length;i++) for(let j=i+1;j<entries.length;j++){
+      const o = squadOverlap(entries[i][1].starting, entries[j][1].starting);
+      if(o>best.overlap) best = {overlap:o, a:entries[i][1].teamName, b:entries[j][1].teamName};
+    }
+    if(!best.a){ el.innerHTML = `<div class="sub">Not enough managers synced yet to compare.</div>`; return; }
+    el.innerHTML = `
+      <h3>${best.a} & ${best.b}</h3>
+      <div class="sub">Most similar starting XIs in the league — ${best.overlap} players in common. Set your identity (top-right) to see who your personal doppelgänger is.</div>
+    `;
+  }
+}
+
+// ---------- Copy Weekly Recap ----------
+function buildRecapText(){
+  if(!GW_COUNT) return null;
+  const gwWinner = [...managers].sort((a,b)=>b.history.find(h=>h.gw===GW_COUNT).points-a.history.find(h=>h.gw===GW_COUNT).points)[0];
+  const muppet = [...managers].sort((a,b)=>a.history.find(h=>h.gw===GW_COUNT).points-b.history.find(h=>h.gw===GW_COUNT).points)[0];
+  const sortedTotal = [...managers].sort((a,b)=>b.totalPoints-a.totalPoints);
+  const gap = sortedTotal[0].totalPoints - sortedTotal[1].totalPoints;
+  return [
+    `🏆 K&A Paid FPL — GW${GW_COUNT} Recap`,
+    ``,
+    `GW Winner: ${gwWinner.teamName} (${gwWinner.history.find(h=>h.gw===GW_COUNT).points} pts)`,
+    `🥶 Muppet of the Week: ${muppet.teamName} (${muppet.history.find(h=>h.gw===GW_COUNT).points} pts)`,
+    `🔥 Title race: ${sortedTotal[0].teamName} leads ${sortedTotal[1].teamName} by ${gap} pt${gap===1?'':'s'}`,
+    `📊 Overall leader: ${sortedTotal[0].teamName} — ${sortedTotal[0].totalPoints} pts`,
+    ``,
+    `Full table & awards → office-fpl-league.web.app`
+  ].join("\n");
+}
+document.getElementById("copy-recap-btn")?.addEventListener("click", async () => {
+  const text = buildRecapText();
+  if(!text){ showToast("No gameweek synced yet — nothing to recap"); return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast("📋 Recap copied — paste it in the group chat");
+  } catch(e){
+    showToast("Couldn't copy automatically — long-press to select the text manually");
+  }
+});
+
+// ---------- Season Report preview ----------
+document.getElementById("season-report-btn")?.addEventListener("click", () => {
+  const sorted = [...managers].sort((a,b)=>b.totalPoints-a.totalPoints);
+  const awards = computeAwards();
+  const cfg = getPrizeConfig();
+  openSheet(`
+    <div class="squad-header"><div style="font-size:22px">📄</div><div><h2>Season Report</h2><p>Preview — final numbers lock at GW38</p></div></div>
+    <div class="section-title" style="margin-top:0"><span class="bar"></span>Final Standings (top 5)</div>
+    ${sorted.slice(0,5).map((m,i)=>`<div class="season-report-line"><span>${i+1}. ${m.teamName}</span><span>${m.totalPoints} pts</span></div>`).join("")}
+    <div class="section-title"><span class="bar"></span>Award Winners</div>
+    ${GW_COUNT ? awards.map(a=>`<div class="season-report-line"><span>${a.emoji} ${a.name}</span><span>${top5(a.metric,a.desc)[0].teamName}</span></div>`).join("") : `<div class="sub">Not available until GW1 wraps</div>`}
+    <div class="section-title"><span class="bar"></span>Prize Breakdown</div>
+    <div class="season-report-line"><span>Total pot</span><span>₹${cfg.totalCollected.toLocaleString()}</span></div>
+    <div class="season-report-line"><span>1st / 2nd / 3rd</span><span>₹${cfg.first} / ₹${cfg.second} / ₹${cfg.third}</span></div>
+    <div class="season-report-line"><span>Per gameweek</span><span>₹${cfg.perMW} &times; 38</span></div>
+  `);
+});
+
+// ---------- Insights: Template vs Differential ----------
+async function renderTemplateDifferential(){
+  const listEl = document.getElementById("template-list");
+  const diffEl = document.getElementById("diff-sub");
+  listEl.innerHTML = `<div class="sub">Loading…</div>`;
+  const rollup = await getLatestSquadsRollup();
+  if(!rollup){
+    listEl.innerHTML = `<div class="sub">No synced gameweeks yet.</div>`;
+    diffEl.textContent = "";
+    return;
+  }
+  const entries = Object.values(rollup.entries);
+  const ownership = {};
+  entries.forEach(e => e.starting.forEach(id => { ownership[id] = (ownership[id]||0)+1; }));
+  const ranked = Object.entries(ownership).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  listEl.innerHTML = ranked.map(([id,count]) => `
+    <div class="own-row"><div class="nm">${playerInfo(id).n}</div><div class="cnt">${count}/${entries.length} squads</div></div>`).join("");
+
+  const avgOwnership = e => e.starting.reduce((s,id)=> s + (ownership[id]||0), 0) / e.starting.length;
+  const diffKing = [...entries].sort((a,b)=> avgOwnership(a) - avgOwnership(b))[0];
+  diffEl.textContent = `${diffKing.teamName} — lowest average ownership across their starting XI (${avgOwnership(diffKing).toFixed(1)} managers/player on average). Genuinely off the beaten path.`;
+}
+
+// ---------- Squad sheet with jerseys + tap-for-GW-history dropdown ----------
+const overlay = document.getElementById("overlay");
+const sheet = document.getElementById("sheet");
+function openSheet(html){ document.getElementById("sheet-content").innerHTML = html; overlay.classList.add("show"); sheet.classList.add("show"); }
+function closeSheet(){ overlay.classList.remove("show"); sheet.classList.remove("show"); }
+overlay.addEventListener("click", closeSheet);
+document.getElementById("sheet-close").addEventListener("click", closeSheet);
+
+let jUid = 0;
+function jerseyCard(elementId, pts, isCap){
+  jUid++;
+  const uid = jUid;
+  const info = playerInfo(elementId);
+  return `
+    <div class="jersey-wrap ${isCap?'cap-ring':''}">
+      <button class="jersey-btn" data-element="${elementId}" data-uid="${uid}">
+        ${jerseySvg(info.team, uid)}
+        <div class="jname">${info.n}${isCap?' (C)':''}</div>
+        <div class="jteam">${info.team}</div>
+      </button>
+      <div class="jpts">${pts}</div>
+    </div>`;
+}
+const gwPlayerPointsCache = {};
+async function getGwPlayerPoints(gw){
+  if(gwPlayerPointsCache[gw]) return gwPlayerPointsCache[gw];
+  const snap = await getDoc(doc(db, `gwPlayerPoints/gw${gw}`));
+  const data = snap.exists() ? snap.data().points : {};
+  gwPlayerPointsCache[gw] = data;
+  return data;
+}
+document.getElementById("standings").addEventListener("click", async (e)=>{
+  const row = e.target.closest(".row"); if(!row) return;
+  const m = managers.find(x=>x.id==row.dataset.mgr);
+  const gwForSquad = mode==="overall" ? GW_COUNT : mode;
+  if(!gwForSquad){ openSheet(`<div class="sub">No synced gameweeks yet.</div>`); return; }
+  openSheet(`<div class="sub">Loading squad…</div>`);
+  const squad = await getManagerSquad(m.id, gwForSquad);
+  if(!squad){
+    openSheet(`
+      <div class="squad-header"><div class="avatar">${initials(m.teamName)}</div><div><h2>${m.teamName}</h2><p>${m.managerName}</p></div></div>
+      <div class="sub">Squad not synced for GW${gwForSquad} yet.</div>
+    `);
+    return;
+  }
+  const posOrder = {GKP:0,DEF:1,MID:2,FWD:3};
+  const lines = [[],[],[],[]];
+  squad.starting.forEach(p => { const pos = playerInfo(p.element).pos; lines[posOrder[pos]].push(p); });
+  const histEntry = m.history.find(h=>h.gw===gwForSquad);
+  const pitchHtml = lines.map(line => `<div class="pline">${line.map(p=>jerseyCard(p.element, p.pts, p.isCaptain)).join("")}</div>`).join("");
+  const benchHtml = squad.bench.map(p=>jerseyCard(p.element, p.pts, false)).join("");
+  openSheet(`
+    <div class="squad-header">
+      <div class="avatar">${initials(m.teamName)}</div>
+      <div><h2>${m.teamName}</h2><p>${m.managerName} · GW${gwForSquad}: ${histEntry?.points ?? '—'} pts</p></div>
+    </div>
+    <div class="pitch">${pitchHtml}</div>
+    <div class="bench-title">Bench</div>
+    <div class="bench-row">${benchHtml}</div>
+  `);
+  document.getElementById("sheet-content").addEventListener("click", async (ev)=>{
+    const btn = ev.target.closest(".jersey-btn"); if(!btn) return;
+    const elementId = btn.dataset.element;
+    const info = playerInfo(elementId);
+    const existing = btn.parentElement.querySelector(".gw-dropdown");
+    if(existing){ existing.remove(); return; }
+    document.querySelectorAll(".gw-dropdown").forEach(d=>d.remove());
+    const dd = document.createElement("div");
+    dd.className = "gw-dropdown";
+    dd.innerHTML = `<div class="gwd-title">${info.n} · by GW</div><div class="gwd-bars">Loading…</div>`;
+    btn.parentElement.appendChild(dd);
+    const weekly = [];
+    for(let gw=1; gw<=GW_COUNT; gw++){
+      const pts = await getGwPlayerPoints(gw);
+      weekly.push(pts[elementId] ?? 0);
+    }
+    const maxV = Math.max(...weekly, 1);
+    const bars = weekly.map((v,i)=>`<div class="gwd-bar" style="height:${Math.max(v/maxV*30,3)}px"><b>${v}</b><span>${i+1}</span></div>`).join("");
+    dd.querySelector(".gwd-bars").innerHTML = bars;
+  });
+});
+
+function renderAll(){ renderHeroStats(); renderStandings(); }
+
+async function boot(){
+  await loadCoreData();
+  await loadAdminData();
+
+  renderLeagueHeader();
+  renderModeSelect();
+  renderAll();
+  renderAwards();
+  renderPrize();
+  renderMomentum();
+  renderLeadChanges();
+  renderH2H();
+  renderNemesis();
+  renderDoppelganger();
+  renderChipTimeline();
+  renderCaptaincyReport();
+  renderTemplateDifferential();
+  renderHighlights();
+
+  renderDeadline();
+  setInterval(renderDeadline, 1000);
+  renderNptClock();
+  setInterval(renderNptClock, 1000);
+  setTimeout(checkRivalAlert, 900);
+
+  if(ident.club) applyClubTheme(ident.club);
+  if(!ident.team || !ident.club){
+    openOnboarding(1); // first-time visitor — the club-tile tap later triggers the intro itself
+  } else {
+    renderViewingPill();
+    // Returning visitor: no click has happened yet this page load, and
+    // browsers block audio until one does — so gate the intro behind a tap
+    // instead of trying to autoplay it.
+    const gate = document.getElementById("tap-gate");
+    gate.classList.remove("hidden");
+    document.getElementById("tap-gate-btn").addEventListener("click", () => {
+      gate.classList.add("hidden");
+      runIntro(startPlaylist);
+    }, { once: true });
+  }
+
+  // While a gameweek is live (not yet final), quietly re-pull standings every
+  // couple of minutes so people watching during a match don't have to keep
+  // manually refreshing. Stops automatically once bonus points are confirmed.
+  if(GW_COUNT && !IS_FINAL){
+    const liveRefresh = setInterval(async () => {
+      await loadCoreData();
+      renderLeagueHeader();
+      renderAll();
+      renderHighlights();
+      renderPrize();
+      if(IS_FINAL) clearInterval(liveRefresh); // fully settled — stop polling
+    }, 120000); // every 2 minutes
+  }
+}
+boot();
+
+document.querySelectorAll(".tab").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+    document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("view-"+btn.dataset.view).classList.add("active");
+  });
+});
+</script>
+</body>
+</html>
