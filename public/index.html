@@ -848,9 +848,17 @@ function countUp(el, target, suffix=""){
   requestAnimationFrame(tick);
 }
 function renderHeroStats(){
-  const sorted = mode==="overall" ? [...managers].sort((a,b)=>b.totalPoints-a.totalPoints) : [...managers].sort((a,b)=>b.history[mode-1].points-a.history[mode-1].points);
-  const top = mode==="overall" ? sorted[0].totalPoints : sorted[0].history[mode-1].points;
-  const avg = mode==="overall" ? Math.round(managers.reduce((s,m)=>s+m.totalPoints,0)/managers.length) : Math.round(managers.reduce((s,m)=>s+m.history[mode-1].points,0)/managers.length);
+  if(managers.length === 0){
+    document.getElementById("hero-stats").innerHTML = `
+      <div class="hstat"><b>—</b><span>Top score</span></div>
+      <div class="hstat"><b>—</b><span>League avg</span></div>
+      <div class="hstat"><b>${mode==="overall"?"Season":"GW"+mode}</b><span>Viewing</span></div>
+    `;
+    return;
+  }
+  const sorted = mode==="overall" ? [...managers].sort((a,b)=>b.totalPoints-a.totalPoints) : [...managers].sort((a,b)=>(b.history.find(h=>h.gw===mode)?.points??0)-(a.history.find(h=>h.gw===mode)?.points??0));
+  const top = mode==="overall" ? sorted[0].totalPoints : (sorted[0].history.find(h=>h.gw===mode)?.points ?? 0);
+  const avg = mode==="overall" ? Math.round(managers.reduce((s,m)=>s+m.totalPoints,0)/managers.length) : Math.round(managers.reduce((s,m)=>s+(m.history.find(h=>h.gw===mode)?.points??0),0)/managers.length);
   document.getElementById("hero-stats").innerHTML = `
     <div class="hstat"><b id="hs-top">0</b><span>Top score</span></div>
     <div class="hstat"><b id="hs-avg">0</b><span>League avg</span></div>
@@ -1418,9 +1426,14 @@ function renderAdminBanterTab(){
 
 function renderStandings(){
   document.getElementById("table-title").textContent = mode==="overall" ? "Overall Standings" : `Gameweek ${mode} — Who Won This Week`;
-  const sorted = mode==="overall" ? [...managers].sort((a,b)=>b.totalPoints-a.totalPoints) : [...managers].sort((a,b)=>b.history[mode-1].points-a.history[mode-1].points);
+  if(managers.length === 0){
+    document.getElementById("standings").innerHTML = `<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px;">Waiting for league data — run a sync to populate standings.</div>`;
+    return;
+  }
+  const gwPts = m => m.history.find(h=>h.gw===mode)?.points ?? 0;
+  const sorted = mode==="overall" ? [...managers].sort((a,b)=>b.totalPoints-a.totalPoints) : [...managers].sort((a,b)=>gwPts(b)-gwPts(a));
   document.getElementById("standings").innerHTML = sorted.map((m,i) => {
-    const mainVal = mode==="overall" ? m.totalPoints : m.history[mode-1].points;
+    const mainVal = mode==="overall" ? m.totalPoints : gwPts(m);
     const lastGw = m.history.find(h=>h.gw===GW_COUNT);
     const subVal = mode==="overall" ? (lastGw ? `GW${GW_COUNT}: ${lastGw.points} pts` : "Season not started") : `${m.totalPoints} pts total`;
     return `
