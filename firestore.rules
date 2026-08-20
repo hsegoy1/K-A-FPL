@@ -2,9 +2,36 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Anyone with the site link can read the league data.
-    // All writes happen only from the sync script via the Admin SDK,
-    // which bypasses these rules entirely — so no client writes are allowed.
+
+    // Admin-only settings: prize pot config, uploaded club crests/backgrounds/
+    // anthems, and per-award custom sound/GIF overrides. Gated by the
+    // username/password screen in the app itself (not Firebase Auth) — so
+    // these stay open at the database level. Fine for a small trusted office
+    // pool; revisit if this ever needs to hold anything more sensitive.
+    match /adminConfig/{doc} {
+      allow read: if true;
+      allow write: if true;
+    }
+    match /clubAssets/{doc} {
+      allow read: if true;
+      allow write: if true;
+    }
+    match /awardMedia/{doc} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Reactions on banter awards (🔥/💀/😭): anyone in the office can tap
+    // these — but only the three known count fields can ever be touched,
+    // nothing arbitrary.
+    match /reactions/{doc} {
+      allow read: if true;
+      allow write: if request.resource.data.keys().hasOnly(['fire', 'skull', 'cry']);
+    }
+
+    // Everything else (standings, gameweek stats, players, squads) is written
+    // only by the sync script via the Admin SDK, which bypasses these rules
+    // entirely — so no client writes are allowed here.
     match /{document=**} {
       allow read: if true;
       allow write: if false;
