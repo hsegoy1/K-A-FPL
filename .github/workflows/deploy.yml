@@ -21,13 +21,14 @@ jobs:
       # Hosting deploy above only pushes the website files — Firestore
       # security rules need their own deploy step, or edits to
       # firestore.rules would silently never take effect.
-      - uses: actions/setup-node@v4
+      #
+      # This uses a dedicated community action (not raw firebase-tools) because
+      # firebase-tools itself has a known, currently-open bug where it silently
+      # fails to authenticate with GOOGLE_APPLICATION_CREDENTIALS in CI
+      # (see firebase/firebase-tools#10726) — this action handles that auth
+      # correctly instead.
+      - uses: w9jds/firebase-action@master
         with:
-          node-version: 20
-
-      - run: npm install -g firebase-tools
-
-      - run: |
-          echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" > /tmp/service-account.json
-          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/service-account.json
-          firebase deploy --only firestore:rules --project office-fpl-league --non-interactive
+          args: deploy --only firestore:rules --project office-fpl-league
+        env:
+          GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
