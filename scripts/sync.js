@@ -40,15 +40,22 @@ async function main() {
   const players = new Map(bootstrap.elements.map((p) => [p.id, p]));
   const teamsById = new Map(bootstrap.teams.map((t) => [t.id, t.short_name]));
   const events = bootstrap.events;
+
+  // Track the CURRENT gameweek from the moment its deadline passes (kickoff),
+  // not just once every match is over — this is what makes standings update
+  // live as Saturday's games happen instead of sitting blank all weekend.
+  // "Final" means FPL has both finished the GW and confirmed bonus points
+  // (data_checked) — until then, numbers are provisional and can still move.
+  const currentEvent = events.find((e) => e.is_current);
   const lastFinished = [...events].reverse().find((e) => e.finished);
-  const gw = lastFinished ? lastFinished.id : null;
-  if (!lastFinished) {
-    console.log(
-      "No gameweek fully finished yet this season (results may still be pending bonus points) — " +
-      "will still sync standings/managers, but skip gameweek-specific stats for now."
-    );
+  const targetEvent = currentEvent || lastFinished;
+  const gw = targetEvent ? targetEvent.id : null;
+  const isFinal = targetEvent ? !!(targetEvent.finished && targetEvent.data_checked) : false;
+
+  if (!targetEvent) {
+    console.log("No gameweek has kicked off yet this season — will still sync standings/managers, but skip gameweek-specific stats for now.");
   } else {
-    console.log(`Latest finished gameweek: GW${gw}`);
+    console.log(`GW${gw} — ${isFinal ? "final (bonus confirmed)" : "live/provisional"}`);
   }
 
   // 1b. Compact player directory — every player's name/position/club, so the
@@ -76,7 +83,20 @@ async function main() {
     for (const el of live.elements) {
       livePointsByElement[el.id] = el.stats.total_points;
     }
+    // Store it standalone too (not just embedded in each manager's squad) —
+    // this is what lets the frontend show a single player's own GW-by-GW
+    // score trend, independent of who owned them.
+    await db.doc(`gwPlayerPoints/gw${gw}`).set({
+      gw,
+      points: livePointsByElement,
+      syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
   }
+
+  // 1d. Next deadline — the frontend can't call bootstrap-static itself (no
+  // CORS support for browsers), so the live countdown needs this stored here.
+  const nextEvent = events.find((e) => e.is_next) || events.find((e) => !e.finished);
+  const nextDeadline = nextEvent ? nextEvent.deadline_time : null;
 
   // 2. League standings (classic league, single page is enough for <50 managers)
   const standings = await getJson(
@@ -91,6 +111,9 @@ async function main() {
     leagueId: LEAGUE_ID,
     leagueName,
     lastSyncedGw: gw,
+    isFinal,
+    nextDeadline,
+    nextGw: nextEvent ? nextEvent.id : null,
     lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
     managerCount: managers.length,
   });
@@ -108,7 +131,39 @@ async function main() {
         : Promise.resolve(null),
     ]);
 
-    const thisGw = gw ? history.current.find((h) => h.event === gw) : null;
+    // While a gameweek is live, FPL's season-history endpoint hasn't posted an
+    // entry for it yet — but the picks endpoint's own entry_history reflects
+    // live, updating-in-real-time scoring for that GW. Use that when present,
+    // and fall back to the confirmed history entry once the GW does show up
+    // there (which also just works correctly for every past, finished GW).
+    const liveEntry = picks?.entry_history
+      ? {
+          gw,
+          points: picks.entry_history.points,
+          totalPoints: picks.entry_history.total_points,
+          rank: picks.entry_history.rank,
+          overallRank: picks.entry_history.overall_rank,
+          benchPoints: picks.entry_history.points_on_bench,
+          transfers: picks.entry_history.event_transfers,
+          transferCost: picks.entry_history.event_transfers_cost,
+        }
+      : null;
+    const confirmedHistory = history.current
+      .filter((h) => h.event !== gw) // drop a stale/duplicate entry for the live GW if one exists
+      .map((h) => ({
+        gw: h.event,
+        points: h.points,
+        totalPoints: h.total_points,
+        rank: h.rank,
+        overallRank: h.overall_rank,
+        benchPoints: h.points_on_bench,
+        transfers: h.event_transfers,
+        transferCost: h.event_transfers_cost,
+      }));
+    const fullHistory = (liveEntry ? [...confirmedHistory, liveEntry] : confirmedHistory)
+      .sort((a, b) => a.gw - b.gw);
+    const thisGw = fullHistory.find((h) => h.gw === gw) || null;
+
     const captainPickId = picks?.picks?.find((p) => p.is_captain)?.element;
     const captainName = captainPickId ? players.get(captainPickId)?.web_name : null;
 
@@ -118,18 +173,9 @@ async function main() {
         managerName: m.player_name,
         teamName: m.entry_name,
         currentRank: m.rank,
-        totalPoints: m.total,
+        totalPoints: thisGw ? thisGw.totalPoints : m.total,
         lastGwPoints: thisGw?.points ?? null,
-        history: history.current.map((h) => ({
-          gw: h.event,
-          points: h.points,
-          totalPoints: h.total_points,
-          rank: h.rank,
-          overallRank: h.overall_rank,
-          benchPoints: h.points_on_bench,
-          transfers: h.event_transfers,
-          transferCost: h.event_transfers_cost,
-        })),
+        history: fullHistory,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true }
@@ -190,9 +236,10 @@ async function main() {
     });
   }
 
-  // 4. Fun stats for this gameweek (only if a gameweek has actually finished)
+  // 4. Fun stats for this gameweek — computed as soon as the GW is live, not
+  // just once it's finished, so standings/awards update through the weekend
   if (!gw || gwResults.length === 0) {
-    console.log(`Synced ${managers.length} managers' standings. No finished gameweek yet — skipping stats.`);
+    console.log(`Synced ${managers.length} managers' standings. No gameweek in progress yet — skipping stats.`);
     return;
   }
 
@@ -214,6 +261,7 @@ async function main() {
 
   await db.doc(`gameweeks/gw${gw}`).set({
     gw,
+    isFinal, // frontend shows a "LIVE — bonus not final" badge whenever this is false
     winner: gwWinner
       ? { entryId: gwWinner.entryId, managerName: gwWinner.managerName, teamName: gwWinner.teamName, points: gwWinner.gwPoints }
       : null,
@@ -233,8 +281,11 @@ async function main() {
     syncedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
-  // Maintain a running log of GW winners for the "MW winner" prize tracker
-  if (gwWinner) {
+  // Maintain a running log of GW winners for the "MW winner" prize tracker —
+  // but ONLY once bonus points are confirmed. This is real money: locking in
+  // a "winner" off provisional numbers that could still shift by a point or
+  // two (and flip who actually won) isn't a risk worth taking.
+  if (gwWinner && isFinal) {
     await db.doc(`mwWinners/gw${gw}`).set({
       gw,
       entryId: gwWinner.entryId,
