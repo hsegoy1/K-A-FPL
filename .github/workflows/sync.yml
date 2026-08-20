@@ -2,9 +2,11 @@ name: Sync FPL data to Firestore
 
 on:
   schedule:
-    # Runs every day at 06:00 UTC — safely catches GW results after weekend
-    # matches finish and after Monday/Friday games too. Adjust as you like.
-    - cron: "0 6 * * *"
+    # Every 15 minutes — needed now that live/provisional scoring is on, so
+    # standings actually move as Saturday's matches happen instead of only
+    # updating once a day. Cheap to run this often (each run is well under a
+    # minute), and GitHub Actions minutes aren't a real constraint at this scale.
+    - cron: "*/15 * * * *"
   workflow_dispatch: {} # lets you trigger it manually from the Actions tab
 
 jobs:
