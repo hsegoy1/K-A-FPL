@@ -39,13 +39,15 @@ async function main() {
   const players = new Map(bootstrap.elements.map((p) => [p.id, p]));
   const events = bootstrap.events;
   const lastFinished = [...events].reverse().find((e) => e.finished);
-  const currentEvent = events.find((e) => e.is_current) || lastFinished;
+  const gw = lastFinished ? lastFinished.id : null;
   if (!lastFinished) {
-    console.log("No finished gameweek yet this season — nothing to sync.");
-    return;
+    console.log(
+      "No gameweek fully finished yet this season (results may still be pending bonus points) — " +
+      "will still sync standings/managers, but skip gameweek-specific stats for now."
+    );
+  } else {
+    console.log(`Latest finished gameweek: GW${gw}`);
   }
-  const gw = lastFinished.id;
-  console.log(`Latest finished gameweek: GW${gw}`);
 
   // 2. League standings (classic league, single page is enough for <50 managers)
   const standings = await getJson(
@@ -71,10 +73,12 @@ async function main() {
     const entryId = m.entry;
     const [history, picks] = await Promise.all([
       getJson(`${FPL_BASE}/entry/${entryId}/history/`),
-      getJson(`${FPL_BASE}/entry/${entryId}/event/${gw}/picks/`).catch(() => null),
+      gw
+        ? getJson(`${FPL_BASE}/entry/${entryId}/event/${gw}/picks/`).catch(() => null)
+        : Promise.resolve(null),
     ]);
 
-    const thisGw = history.current.find((h) => h.event === gw);
+    const thisGw = gw ? history.current.find((h) => h.event === gw) : null;
     const captainPickId = picks?.picks?.find((p) => p.is_captain)?.element;
     const captainName = captainPickId ? players.get(captainPickId)?.web_name : null;
 
@@ -115,7 +119,12 @@ async function main() {
     }
   }
 
-  // 4. Fun stats for this gameweek
+  // 4. Fun stats for this gameweek (only if a gameweek has actually finished)
+  if (!gw || gwResults.length === 0) {
+    console.log(`Synced ${managers.length} managers' standings. No finished gameweek yet — skipping stats.`);
+    return;
+  }
+
   const byPoints = [...gwResults].sort((a, b) => b.gwPoints - a.gwPoints);
   const gwWinner = byPoints[0];
   const gwLoser = byPoints[byPoints.length - 1];
