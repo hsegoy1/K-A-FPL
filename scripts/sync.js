@@ -22,6 +22,7 @@ admin.initializeApp({
 const db = admin.firestore();
 
 const FPL_BASE = "https://fantasy.premierleague.com/api";
+const POSITION_MAP = { 1: "GKP", 2: "DEF", 3: "MID", 4: "FWD" };
 
 async function getJson(url) {
   const res = await fetch(url, {
@@ -37,6 +38,7 @@ async function main() {
   // 1. Bootstrap data: players, teams, gameweek (event) list
   const bootstrap = await getJson(`${FPL_BASE}/bootstrap-static/`);
   const players = new Map(bootstrap.elements.map((p) => [p.id, p]));
+  const teamsById = new Map(bootstrap.teams.map((t) => [t.id, t.short_name]));
   const events = bootstrap.events;
   const lastFinished = [...events].reverse().find((e) => e.finished);
   const gw = lastFinished ? lastFinished.id : null;
@@ -47,6 +49,33 @@ async function main() {
     );
   } else {
     console.log(`Latest finished gameweek: GW${gw}`);
+  }
+
+  // 1b. Compact player directory — every player's name/position/club, so the
+  // frontend can render jerseys and squads without hitting the FPL API itself
+  // (browsers can't call it directly — see the CORS note above).
+  const playersMeta = {};
+  for (const p of bootstrap.elements) {
+    playersMeta[p.id] = {
+      n: p.web_name,
+      pos: POSITION_MAP[p.element_type] || "MID",
+      team: teamsById.get(p.team) || "UNK",
+    };
+  }
+  await db.doc("playersMeta/current").set({
+    players: playersMeta,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  // 1c. This gameweek's live per-player points (only fetched once, shared by
+  // every manager below) — the picks endpoint tells us WHO was picked, this
+  // endpoint tells us what they actually scored that week.
+  let livePointsByElement = {};
+  if (gw) {
+    const live = await getJson(`${FPL_BASE}/event/${gw}/live/`);
+    for (const el of live.elements) {
+      livePointsByElement[el.id] = el.stats.total_points;
+    }
   }
 
   // 2. League standings (classic league, single page is enough for <50 managers)
@@ -68,6 +97,7 @@ async function main() {
 
   // 3. Per-manager: full history (one call gives every past GW) + this GW's picks (for captain/chip/bench)
   const gwResults = []; // { entryId, name, teamName, gwPoints, benchPoints, transfers, hits, captainId }
+  const gwSquadsRollup = {}; // compact league-wide snapshot for this GW — powers Template/Differential/Doppelgänger without 30 separate reads
 
   for (const m of managers) {
     const entryId = m.entry;
@@ -105,6 +135,38 @@ async function main() {
       { merge: true }
     );
 
+    // 3b. Full squad snapshot for this GW (starting XI + bench + captain + chip),
+    // stored per-manager so it accumulates week by week without ever needing to
+    // re-fetch past gameweeks. This is what drives jerseys, Captaincy Alpha, and
+    // chip-effectiveness on the frontend.
+    if (gw && picks?.picks) {
+      const withPoints = (p) => ({
+        element: p.element,
+        pts: livePointsByElement[p.element] ?? 0,
+        isCaptain: !!p.is_captain,
+      });
+      const starting = picks.picks.filter((p) => p.position <= 11).map(withPoints);
+      const bench = picks.picks.filter((p) => p.position > 11).map(withPoints);
+      const chip = picks.active_chip || null;
+
+      await db.doc(`managers/${entryId}/gwSquads/gw${gw}`).set({
+        gw,
+        captain: captainPickId || null,
+        viceCaptain: picks.picks.find((p) => p.is_vice_captain)?.element || null,
+        chip,
+        starting,
+        bench,
+      });
+
+      gwSquadsRollup[entryId] = {
+        teamName: m.entry_name,
+        captain: captainPickId || null,
+        chip,
+        starting: starting.map((p) => p.element),
+        bench: bench.map((p) => p.element),
+      };
+    }
+
     if (thisGw) {
       gwResults.push({
         entryId,
@@ -117,6 +179,15 @@ async function main() {
         captainName,
       });
     }
+  }
+
+  // 3c. Write the league-wide compact rollup for this GW (one doc, not 30 reads)
+  if (gw && Object.keys(gwSquadsRollup).length > 0) {
+    await db.doc(`gameweekSquads/gw${gw}`).set({
+      gw,
+      entries: gwSquadsRollup,
+      syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
   }
 
   // 4. Fun stats for this gameweek (only if a gameweek has actually finished)
