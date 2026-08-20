@@ -1,0 +1,24 @@
+rules_version = '2';
+
+// Storage holds the actual uploaded files: club crests, backgrounds, and
+// anthems, plus per-award sound effects (GIFs stay as external links, not
+// uploads — see clubAssets/awardMedia in Firestore).
+//
+// Gated by the username/password screen in the app itself, not Firebase
+// Auth — so these stay open at the storage level, with file size/type
+// limits as a sensible guardrail either way.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /club-assets/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.resource.size < 15 * 1024 * 1024 // 15MB cap per file
+                   && (request.resource.contentType.matches('image/.*')
+                       || request.resource.contentType.matches('audio/.*'));
+    }
+    match /award-media/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.resource.size < 15 * 1024 * 1024
+                   && request.resource.contentType.matches('audio/.*');
+    }
+  }
+}
