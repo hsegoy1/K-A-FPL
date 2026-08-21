@@ -1059,6 +1059,7 @@ function runIntro(onDone){
 
   setTimeout(()=>{
     overlay.classList.add("hidden");
+    badge.className = "intro-badge"; // reset fully so nothing lingers
     introRunning = false;
     if(onDone) onDone();
   }, 4000);
