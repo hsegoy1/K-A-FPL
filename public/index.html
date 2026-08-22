@@ -86,6 +86,47 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .section-title .bar{width:3px;height:14px;background:var(--grad);border-radius:2px;}
 
 .row{display:flex;align-items:center;gap:12px;background:var(--panel-glass);backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);border:1px solid var(--line);border-radius:var(--radius);padding:11px 12px;margin-bottom:8px;cursor:pointer;opacity:0;transform:translateY(8px);animation:rowIn .4s ease forwards;}
+
+/* ---------- Table split view (fixtures appear alongside standings in per-GW mode) ---------- */
+.table-split{display:flex;gap:10px;align-items:flex-start;}
+.table-col-standings{flex:1;min-width:0;}
+.table-col-fixtures{width:42%;flex-shrink:0;background:var(--panel-glass);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
+.table-col-fixtures.hidden{display:none;}
+.table-col-standings.compact .row{padding:7px 8px;gap:6px;border-radius:10px;margin-bottom:5px;}
+.table-col-standings.compact .avatar{width:22px;height:22px;border-radius:6px;font-size:10px;}
+.table-col-standings.compact .rinfo .team{font-size:11px;}
+.table-col-standings.compact .rinfo .mgr{display:none;}
+.table-col-standings.compact .rpts b{font-size:12px;}
+.table-col-standings.compact .rpts span{font-size:9px;}
+.col-title{font-family:var(--font-m);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:10px 10px 6px;}
+.fixture-row{display:flex;align-items:center;gap:5px;padding:9px 8px;border-bottom:1px solid var(--line);cursor:pointer;}
+.fixture-row:last-child{border-bottom:none;}
+.fixture-row:active{background:rgba(255,255,255,.04);}
+.fx-team{display:flex;align-items:center;gap:4px;flex:1;min-width:0;}
+.fx-team.away{flex-direction:row-reverse;text-align:right;}
+.fx-team .fx-badge{width:18px;height:18px;flex-shrink:0;}
+.fx-team .code{font-size:9.5px;font-weight:700;font-family:var(--font-d);}
+.fx-mid{font-family:var(--font-m);font-size:11px;font-weight:700;padding:0 3px;white-space:nowrap;}
+.fx-mid.upcoming{color:var(--muted);font-size:8.5px;font-weight:500;}
+
+/* ---------- Match detail sheet ---------- */
+.md-header{display:flex;align-items:center;justify-content:center;gap:16px;padding:6px 0 18px;}
+.md-header .fx-badge{width:44px;height:44px;}
+.md-header .code{font-family:var(--font-d);font-weight:800;font-size:14px;margin-top:4px;text-align:center;}
+.md-score{font-family:var(--font-m);font-size:26px;font-weight:700;}
+.md-time{text-align:center;color:var(--muted);font-size:11px;margin-bottom:14px;}
+.md-section{margin-bottom:14px;}
+.md-section .stitle{font-family:var(--font-m);font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:center;background:rgba(255,255,255,.04);padding:5px;border-radius:6px;margin-bottom:6px;}
+.md-stat-col{flex:1;}
+.md-stat-line{display:flex;align-items:center;gap:5px;font-size:11.5px;padding:2px 0;}
+.md-stat-col.away .md-stat-line{flex-direction:row-reverse;text-align:right;}
+.md-stat-line .val{font-family:var(--font-m);font-size:10px;background:var(--green);color:#052;border-radius:6px;padding:1px 5px;font-weight:700;}
+.md-stat-line .val.neg{background:var(--red);color:#fff;}
+.md-stat-line .cnt{font-weight:800;}
+.md-stat-line .plain-cnt{font-family:var(--font-m);font-size:10px;color:var(--muted);}
+.countdown-box{text-align:center;padding:20px 0;}
+.countdown-box .cd-time{font-family:var(--font-m);font-size:28px;font-weight:700;color:var(--accent2);margin:10px 0;}
+.countdown-box .cd-sub{font-size:11px;color:var(--muted);}
 @keyframes rowIn{to{opacity:1;transform:translateY(0);}}
 .row.gold{border-color:rgba(255,210,63,.5);background:linear-gradient(90deg, rgba(255,210,63,.1), var(--panel) 40%);}
 .pos{font-family:var(--font-m);font-size:13px;color:var(--muted);width:20px;text-align:center;}
@@ -118,29 +159,79 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .squad-header .avatar{width:46px;height:46px;border-radius:12px;font-size:16px;}
 .squad-header h2{font-family:var(--font-d);font-size:18px;margin:0;}
 .squad-header p{margin:0;font-size:12px;color:var(--muted);}
-.pitch{background:linear-gradient(180deg,#0F2A1C,#081A11);border-radius:16px;padding:16px 6px;border:1px solid #1E4A30;position:relative;}
-.pline{display:flex;justify-content:space-around;margin-bottom:16px;flex-wrap:wrap;gap:10px;position:relative;}
-.bench-title{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px;}
-.bench-row{display:flex;gap:12px;overflow-x:auto;padding-bottom:4px;}
-
-.jersey-wrap{display:flex;flex-direction:column;align-items:center;gap:1px;position:relative;}
-.jersey-btn{background:none;border:none;padding:0;display:flex;flex-direction:column;align-items:center;cursor:pointer;}
-.jersey-svg{width:40px;height:44px;filter:drop-shadow(0 3px 4px rgba(0,0,0,.5));}
-.jname{font-size:9.5px;font-weight:700;text-align:center;white-space:nowrap;color:var(--text);}
-.jteam{font-size:8px;color:var(--muted);}
-.jpts{font-family:var(--font-m);font-size:11px;color:var(--accent2);font-weight:700;}
-.cap-ring{position:relative;}
-.cap-ring::after{content:'C';position:absolute;top:-3px;right:2px;background:var(--gold);color:#000;font-size:8px;font-weight:800;width:14px;height:14px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 0 6px rgba(255,210,63,.6);}
-.gw-dropdown{position:absolute;top:100%;left:50%;transform:translateX(-50%);background:#0D0715;border:1px solid var(--accent1);border-radius:10px;padding:8px 10px;z-index:5;white-space:nowrap;box-shadow:0 8px 20px rgba(0,0,0,.5);margin-top:4px;}
-.gw-dropdown .gwd-title{font-size:9px;color:var(--muted);text-transform:uppercase;margin-bottom:4px;}
-.gw-dropdown .gwd-bars{display:flex;gap:5px;align-items:flex-end;height:36px;}
-.gw-dropdown .gwd-stats{display:flex;flex-direction:column;gap:4px;min-width:140px;}
+.gwd-stats{display:flex;flex-direction:column;gap:4px;min-width:140px;}
 .gwd-stat-row{display:flex;justify-content:space-between;gap:14px;font-size:11px;color:var(--text);}
 .gwd-stat-row span:last-child{font-family:var(--font-m);color:var(--accent2);}
 .gwd-nostat{font-size:11px;color:var(--muted);}
-.gwd-bar{width:12px;background:var(--grad);border-radius:2px 2px 0 0;min-height:2px;position:relative;}
-.gwd-bar span{position:absolute;bottom:-14px;left:0;right:0;text-align:center;font-size:7px;color:var(--muted);}
-.gwd-bar b{position:absolute;top:-13px;left:0;right:0;text-align:center;font-size:8px;color:var(--text);}
+.gwd-stat-row{display:flex;justify-content:space-between;gap:14px;font-size:11px;color:var(--text);}
+.gwd-stat-row span:last-child{font-family:var(--font-m);color:var(--accent2);}
+.gwd-nostat{font-size:11px;color:var(--muted);}
+
+/* ---------- Full-screen Pitch View ---------- */
+.pitch-overlay{position:fixed;inset:0;z-index:90;background:#050308;display:flex;flex-direction:column;}
+.pitch-overlay.hidden{display:none;}
+.pv-topbar{display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(23,15,38,.9);backdrop-filter:blur(14px);border-bottom:1px solid var(--line);flex-shrink:0;z-index:10;}
+.pv-close{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--text);font-size:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;}
+.pv-gwselect{flex:1;position:relative;}
+.pv-gwselect select{width:100%;background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--text);font-family:var(--font-m);font-size:12.5px;padding:8px 10px;border-radius:10px;appearance:none;-webkit-appearance:none;}
+.pv-gwselect::after{content:'▾';position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;}
+.pv-compare-btn{background:var(--panel);border:1px solid var(--accent2);color:var(--accent2);border-radius:10px;padding:8px 12px;font-family:var(--font-d);font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0;}
+.pv-compare-btn.active{background:var(--grad);color:#0D0715;border-color:transparent;}
+.pv-header-info{display:flex;align-items:center;gap:10px;padding:10px 14px;flex-shrink:0;}
+.pv-header-info .av{width:36px;height:36px;border-radius:10px;background:var(--grad);display:flex;align-items:center;justify-content:center;font-family:var(--font-d);font-weight:700;font-size:13px;color:#0D0715;overflow:hidden;}
+.pv-header-info .nm{font-family:var(--font-d);font-weight:700;font-size:14px;}
+.pv-header-info .sc{font-family:var(--font-m);color:var(--accent2);font-size:12px;}
+.pv-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+.pv-split{display:flex;gap:2px;min-height:100%;}
+.pv-split .pv-team-col{flex:1;min-width:0;border-right:1px solid var(--line);}
+.pv-split .pv-team-col:last-child{border-right:none;}
+.pv-split .pitch-stage{transform:scale(.92);transform-origin:top center;}
+.pv-split .pv-header-info{padding:8px 8px 4px;flex-direction:column;align-items:flex-start;gap:2px;}
+.pv-split .pv-header-info .nm{font-size:11.5px;}
+
+.pitch-stage{padding:6px 10px 20px;}
+.pitch-wrap{position:relative;border-radius:14px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.6);}
+.pitch-svg{display:block;width:100%;height:auto;}
+.pv-zone{position:absolute;left:0;right:0;display:flex;justify-content:space-around;align-items:flex-start;padding:0 8%;}
+.pv-zone.gk{top:5%;} .pv-zone.def{top:20%;} .pv-zone.mid{top:47%;} .pv-zone.fwd{top:74%;}
+.pv-jersey{display:flex;flex-direction:column;align-items:center;gap:1px;filter:drop-shadow(0 6px 8px rgba(0,0,0,.55));}
+.pv-jersey svg{width:34px;height:37px;}
+.pv-jersey .pn{font-size:8.5px;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8);white-space:nowrap;max-width:52px;overflow:hidden;text-overflow:ellipsis;}
+.pv-jersey .pp{font-family:var(--font-m);font-size:10px;color:var(--accent2);font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,.8);}
+.pv-split .pv-jersey svg{width:24px;height:26px;}
+.pv-split .pv-jersey .pn{font-size:7px;max-width:38px;}
+.pv-split .pv-jersey .pp{font-size:8.5px;}
+.pv-jersey.cap-badge{position:relative;}
+.pv-jersey.cap-badge::before{content:'C';position:absolute;top:-4px;right:6px;background:var(--gold);color:#000;font-size:8px;font-weight:800;width:13px;height:13px;border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:2;box-shadow:0 0 6px rgba(255,210,63,.7);}
+
+.goal-scene{position:absolute;top:-2%;left:50%;transform:translateX(-50%);width:46%;height:9%;perspective:220px;z-index:3;pointer-events:none;}
+.goal-frame{position:relative;width:100%;height:100%;transform-style:preserve-3d;transform:rotateX(8deg);}
+.goal-post{position:absolute;bottom:0;width:5%;height:100%;background:linear-gradient(90deg, #cfd8e3 0%, #ffffff 35%, #ffffff 65%, #aab4c0 100%);border-radius:3px;box-shadow:0 0 6px rgba(255,255,255,.5);}
+.goal-post.left{left:2%;} .goal-post.right{right:2%;}
+.goal-crossbar{position:absolute;top:0;left:2%;right:2%;height:6%;background:linear-gradient(180deg, #ffffff, #b8c2cf);border-radius:3px;box-shadow:0 0 6px rgba(255,255,255,.5);}
+.goal-net{position:absolute;top:6%;left:3%;right:3%;bottom:0;background-image:repeating-linear-gradient(115deg, rgba(255,255,255,.5) 0 1px, transparent 1px 9px),repeating-linear-gradient(65deg, rgba(255,255,255,.5) 0 1px, transparent 1px 9px);transform:rotateX(58deg) translateZ(-14px);transform-origin:top;opacity:.55;}
+.goal-shadow{position:absolute;bottom:-6px;left:8%;right:8%;height:14px;background:radial-gradient(ellipse, rgba(0,0,0,.5), transparent 70%);filter:blur(3px);}
+
+.stand-wrap{position:relative;padding:18px 0 26px;background:linear-gradient(180deg, #0a0612, #0D0715);perspective:600px;overflow:hidden;}
+.stand-title{text-align:center;font-family:var(--font-m);font-size:10px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;margin-bottom:10px;}
+.stand-tiers{transform-style:preserve-3d;}
+.stand-row{display:flex;justify-content:center;gap:3px;margin-bottom:3px;transform-style:preserve-3d;}
+.pv-seat{width:7px;height:7px;border-radius:2px 2px 0 0;flex-shrink:0;}
+.bench-front-row{display:flex;justify-content:center;gap:16px;margin-top:14px;position:relative;z-index:2;flex-wrap:wrap;}
+.bench-seat{display:flex;flex-direction:column;align-items:center;gap:3px;}
+.bench-seat-back{width:40px;height:26px;border-radius:8px 8px 3px 3px;background:linear-gradient(180deg, #2a1a42, #1a1028);border:1px solid var(--line);display:flex;align-items:flex-end;justify-content:center;padding-bottom:2px;box-shadow:0 6px 14px rgba(0,0,0,.5), inset 0 -3px 6px rgba(0,0,0,.3);}
+.bench-seat .pv-jersey svg{width:26px;height:28px;}
+.bench-seat .pn{font-size:7px;}
+.bench-seat .pp{font-size:8.5px;}
+
+/* ---------- Compare picker sheet ---------- */
+.compare-overlay{position:fixed;inset:0;z-index:95;background:rgba(5,3,8,.8);display:flex;align-items:flex-end;justify-content:center;}
+.compare-overlay.hidden{display:none;}
+.compare-sheet{width:100%;max-width:480px;background:var(--panel);border-radius:20px 20px 0 0;padding:16px;max-height:70vh;overflow-y:auto;}
+.compare-sheet h3{font-family:var(--font-d);margin:0 0 10px;font-size:15px;}
+.compare-opt{display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;cursor:pointer;}
+.compare-opt:active{background:rgba(255,255,255,.06);}
+.compare-opt .av{width:30px;height:30px;border-radius:8px;background:var(--grad);display:flex;align-items:center;justify-content:center;font-family:var(--font-d);font-weight:700;font-size:11px;color:#0D0715;flex-shrink:0;}
 
 .prize-hero{background:var(--panel-glass);backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);border:1px solid var(--line);border-radius:16px;padding:18px;text-align:center;margin-bottom:14px;}
 .prize-hero .amount{font-family:var(--font-d);font-size:30px;font-weight:800;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;}
@@ -156,6 +247,13 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .mw-prize-row .amt{font-family:var(--font-m);color:var(--gold);font-size:13px;}
 
 .kpi-card{background:var(--panel-glass);backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:14px;}
+.kpi-card.clickable{cursor:pointer;}
+.kpi-card.clickable:active{transform:scale(.98);}
+.kpi-card .tap-more{font-size:9px;color:var(--muted);margin-top:8px;opacity:.7;}
+.mini-rank-row{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;}
+.mini-rank-row .n{width:16px;color:var(--muted);font-family:var(--font-m);flex-shrink:0;}
+.mini-rank-row .t{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mini-rank-row .v{font-family:var(--font-m);color:var(--accent2);flex-shrink:0;}
 .kpi-card h3{font-family:var(--font-d);font-size:13.5px;margin:0 0 3px;}
 .kpi-card .sub{font-size:11px;color:var(--muted);margin-bottom:10px;}
 .rank-legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
@@ -280,6 +378,7 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .sheet-handle{width:36px;height:4px;background:var(--line);border-radius:2px;margin:0 auto 14px;}
 .close-btn{position:absolute;top:14px;right:16px;background:var(--panel-glass);backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);border:1px solid var(--line);color:var(--text);width:28px;height:28px;border-radius:50%;font-size:14px;cursor:pointer;}
 .insight{font-size:12.5px;color:var(--text);background:rgba(255,46,146,.1);border-radius:10px;padding:10px 12px;margin-bottom:14px;line-height:1.5;}
+.award-gif{width:100%;height:160px;object-fit:cover;border-radius:14px;margin-bottom:12px;display:block;background:var(--panel);}
 
 /* ---------- Onboarding ---------- */
 .onboard-overlay{position:fixed;inset:0;z-index:100;display:flex;align-items:flex-end;justify-content:center;background:rgba(5,2,10,.75);backdrop-filter:blur(6px);}
@@ -394,6 +493,22 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
   <button class="tg-btn" id="tap-gate-btn">▶ Tap to Enter</button>
 </div>
 
+<div class="pitch-overlay hidden" id="pitch-overlay">
+  <div class="pv-topbar">
+    <div class="pv-close" id="pv-close">✕</div>
+    <div class="pv-gwselect"><select id="pv-gw-select"></select></div>
+    <button class="pv-compare-btn" id="pv-compare-btn">⇄ Compare</button>
+  </div>
+  <div class="pv-body" id="pv-body"></div>
+</div>
+
+<div class="compare-overlay hidden" id="compare-overlay">
+  <div class="compare-sheet">
+    <h3>Compare against…</h3>
+    <div id="compare-list"></div>
+  </div>
+</div>
+
 <div class="hero">
   <div class="hero-inner">
     <div class="live" id="live-badge"><span class="dot"></span>LOADING…</div>
@@ -420,25 +535,58 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
     <div class="section-title"><span class="bar"></span>This Week's Highlights</div>
     <div class="highlights-grid" id="highlights"></div>
     <div class="section-title"><span class="bar"></span><span id="table-title">Overall Standings</span></div>
-    <div id="standings"></div>
+    <div class="table-split" id="table-split">
+      <div class="table-col-standings" id="table-col-standings">
+        <div id="standings"></div>
+      </div>
+      <div class="table-col-fixtures hidden" id="table-col-fixtures">
+        <div class="col-title">Fixtures</div>
+        <div id="fixtures-list"></div>
+      </div>
+    </div>
   </div>
 
   <div id="view-insights" class="view">
     <div class="section-title"><span class="bar"></span>Momentum</div>
-    <div class="kpi-card">
+    <div class="kpi-card clickable" data-detail="momentum">
       <h3>Who's heating up, who's cooling off</h3>
       <div class="sub" id="momentum-sub">Rank change over the last few gameweeks</div>
       <div id="momentum-list"></div>
+      <div class="tap-more">tap for the full ranking →</div>
+    </div>
+
+    <div class="section-title"><span class="bar"></span>Form Guide</div>
+    <div class="kpi-card clickable" data-detail="form">
+      <h3>Best average over the last 3 gameweeks</h3>
+      <div class="sub">Who's actually hot right now, not just overall</div>
+      <div id="form-list"></div>
+      <div class="tap-more">tap for the full ranking →</div>
+    </div>
+
+    <div class="section-title"><span class="bar"></span>Consistency</div>
+    <div class="kpi-card clickable" data-detail="consistency">
+      <h3>Steady scorers vs boom-or-bust</h3>
+      <div class="sub">Based on week-to-week score variance</div>
+      <div id="consistency-list"></div>
+      <div class="tap-more">tap for the full ranking →</div>
+    </div>
+
+    <div class="section-title"><span class="bar"></span>Bench Regret</div>
+    <div class="kpi-card clickable" data-detail="bench">
+      <h3>Points left unused on the bench, all season</h3>
+      <div class="sub" id="bench-regret-sub"></div>
+      <div id="bench-regret-list"></div>
+      <div class="tap-more">tap for the full ranking →</div>
     </div>
 
     <div class="section-title"><span class="bar"></span>Lead Changes</div>
-    <div class="kpi-card" id="lead-changes-card"></div>
+    <div class="kpi-card clickable" data-detail="leadchanges" id="lead-changes-card"></div>
 
     <div class="section-title"><span class="bar"></span>Title Race</div>
-    <div class="kpi-card" id="h2h-card"></div>
+    <div class="kpi-card clickable" data-detail="titlerace" id="h2h-card"></div>
 
     <div class="section-title"><span class="bar"></span>Nemesis</div>
-    <div class="kpi-card" id="nemesis-card"></div>
+    <div class="kpi-card clickable" data-detail="nemesis" id="nemesis-card"></div>
 
     <div class="section-title"><span class="bar"></span>Chip Usage</div>
     <div class="kpi-card">
@@ -455,7 +603,7 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
     </div>
 
     <div class="section-title"><span class="bar"></span>Doppelgänger</div>
-    <div class="kpi-card" id="doppel-card"></div>
+    <div class="kpi-card clickable" data-detail="doppel" id="doppel-card"></div>
 
     <div class="section-title"><span class="bar"></span>Transfer Activity</div>
     <div class="kpi-card">
@@ -465,10 +613,11 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
     </div>
 
     <div class="section-title"><span class="bar"></span>Template vs Differential</div>
-    <div class="kpi-card">
+    <div class="kpi-card clickable" data-detail="template">
       <h3>Most-owned XI across the league</h3>
       <div class="sub">The "template" everyone's copying</div>
       <div id="template-list"></div>
+      <div class="tap-more">tap for the full breakdown →</div>
     </div>
     <div class="kpi-card">
       <h3>🦄 Differential Menace</h3>
@@ -1490,6 +1639,18 @@ function renderAdminBanterTab(){
 
 function renderStandings(){
   document.getElementById("table-title").textContent = mode==="overall" ? "Overall Standings" : `Gameweek ${mode} — Who Won This Week`;
+  const standingsCol = document.getElementById("table-col-standings");
+  const fixturesCol = document.getElementById("table-col-fixtures");
+  // Fixtures only make sense for a specific gameweek — Overall shows the
+  // full-width list like before.
+  if(mode === "overall"){
+    standingsCol.classList.remove("compact");
+    fixturesCol.classList.add("hidden");
+  } else {
+    standingsCol.classList.add("compact");
+    fixturesCol.classList.remove("hidden");
+    renderFixtures(mode);
+  }
   if(managers.length === 0){
     document.getElementById("standings").innerHTML = `<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px;">Waiting for league data — run a sync to populate standings.</div>`;
     return;
@@ -1508,6 +1669,139 @@ function renderStandings(){
       <div class="rpts"><b>${mainVal}</b><span>${subVal}</span></div>
     </div>`;
   }).join("");
+}
+
+// ---------- Fixtures panel: real matches for the selected gameweek, with match detail popups ----------
+const fixturesCache = {};
+async function getFixturesForGw(gw){
+  if(fixturesCache[gw]) return fixturesCache[gw];
+  const snap = await getDoc(doc(db, `gameweekFixtures/gw${gw}`));
+  const data = snap.exists() ? (snap.data().fixtures || []) : [];
+  fixturesCache[gw] = data;
+  return data;
+}
+const GOAL_POINTS = { GKP:6, DEF:6, MID:5, FWD:4 };
+async function renderFixtures(gw){
+  const el = document.getElementById("fixtures-list");
+  el.innerHTML = `<div class="sub" style="padding:14px;">Loading…</div>`;
+  const fixtures = await getFixturesForGw(gw);
+  if(fixtures.length === 0){
+    el.innerHTML = `<div class="sub" style="padding:14px;">No fixtures synced for GW${gw} yet.</div>`;
+    return;
+  }
+  let fUid = 0;
+  el.innerHTML = fixtures.map((f,i) => {
+    fUid++;
+    const mid = f.finished
+      ? `${f.homeScore} - ${f.awayScore}`
+      : fmtNPT(new Date(f.kickoff), {hour:'numeric', minute:'2-digit'});
+    return `
+    <div class="fixture-row" data-idx="${i}">
+      <div class="fx-team home"><div class="fx-badge">${crestSvg(f.home, 'fxh'+fUid)}</div><span class="code">${f.home}</span></div>
+      <div class="fx-mid ${f.finished?'':'upcoming'}">${mid}</div>
+      <div class="fx-team away"><div class="fx-badge">${crestSvg(f.away, 'fxa'+fUid)}</div><span class="code">${f.away}</span></div>
+    </div>`;
+  }).join("");
+  el.querySelectorAll(".fixture-row").forEach(row => {
+    row.addEventListener("click", () => openMatchDetail(fixtures[parseInt(row.dataset.idx)]));
+  });
+}
+
+function statEntriesFor(fixture, identifier, side){
+  return (fixture.stats?.[identifier]?.[side] || []).map(e => ({...e, ...playerInfo(e.element)}));
+}
+function renderScoringSection(title, home, away, ptsPerUnit){
+  if(home.length===0 && away.length===0) return "";
+  const maxLen = Math.max(home.length, away.length);
+  let rows = "";
+  for(let i=0;i<maxLen;i++){
+    const h = home[i], a = away[i];
+    const line = (e) => e ? `<div class="md-stat-line">${e.n} <span class="cnt">(${e.value})</span> <span class="val">+${ptsPerUnit(e)}</span></div>` : '';
+    rows += `<div style="display:flex;justify-content:space-between;"><div class="md-stat-col">${line(h)}</div><div class="md-stat-col away">${line(a)}</div></div>`;
+  }
+  return `<div class="md-section"><div class="stitle">${title}</div>${rows}</div>`;
+}
+function renderCardSection(title, home, away, points){
+  if(home.length===0 && away.length===0) return "";
+  const maxLen = Math.max(home.length, away.length);
+  let rows = "";
+  for(let i=0;i<maxLen;i++){
+    const h = home[i], a = away[i];
+    const line = (e) => e ? `<div class="md-stat-line">${e.n} <span class="val neg">${points}</span></div>` : '';
+    rows += `<div style="display:flex;justify-content:space-between;"><div class="md-stat-col">${line(h)}</div><div class="md-stat-col away">${line(a)}</div></div>`;
+  }
+  return `<div class="md-section"><div class="stitle">${title}</div>${rows}</div>`;
+}
+function renderPlainCountSection(title, home, away){
+  if(home.length===0 && away.length===0) return "";
+  const maxLen = Math.max(home.length, away.length);
+  let rows = "";
+  for(let i=0;i<maxLen;i++){
+    const h = home[i], a = away[i];
+    const line = (e) => e ? `<div class="md-stat-line">${e.n} <span class="plain-cnt">(${e.value})</span></div>` : '';
+    rows += `<div style="display:flex;justify-content:space-between;"><div class="md-stat-col">${line(h)}</div><div class="md-stat-col away">${line(a)}</div></div>`;
+  }
+  return `<div class="md-section"><div class="stitle">${title}</div>${rows}</div>`;
+}
+function renderBonusSection(title, home, away){
+  if(home.length===0 && away.length===0) return "";
+  const maxLen = Math.max(home.length, away.length);
+  let rows = "";
+  for(let i=0;i<maxLen;i++){
+    const h = home[i], a = away[i];
+    const line = (e) => e ? `<div class="md-stat-line"><span class="val">+${e.value}</span>${e.n}</div>` : '';
+    rows += `<div style="display:flex;justify-content:space-between;"><div class="md-stat-col">${line(h)}</div><div class="md-stat-col away">${line(a)}</div></div>`;
+  }
+  return `<div class="md-section"><div class="stitle">${title}</div>${rows}</div>`;
+}
+let countdownInterval = null;
+function openMatchDetail(f){
+  if(countdownInterval){ clearInterval(countdownInterval); countdownInterval = null; }
+  if(!f.finished){
+    openSheet(`
+      <div class="md-header">
+        <div style="text-align:center">${crestSvg(f.home,'mdh')}<div class="code">${f.home}</div></div>
+        <div style="color:var(--muted);font-family:var(--font-m)">VS</div>
+        <div style="text-align:center">${crestSvg(f.away,'mda')}<div class="code">${f.away}</div></div>
+      </div>
+      <div class="countdown-box">
+        <div class="cd-sub">Kicks off</div>
+        <div class="cd-time" id="cd-time">--:--:--</div>
+        <div class="cd-sub">${fmtNPT(new Date(f.kickoff), {weekday:'short',day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})} NPT</div>
+      </div>
+    `);
+    const tick = () => {
+      const el = document.getElementById("cd-time");
+      if(!el){ clearInterval(countdownInterval); return; }
+      const diff = new Date(f.kickoff).getTime() - Date.now();
+      if(diff <= 0){ el.textContent = "Kicking off…"; clearInterval(countdownInterval); return; }
+      const d = Math.floor(diff/86400000), h = Math.floor(diff%86400000/3600000), m = Math.floor(diff%3600000/60000), s = Math.floor(diff%60000/1000);
+      el.textContent = (d>0?d+"d ":"") + `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    };
+    tick();
+    countdownInterval = setInterval(tick, 1000);
+    return;
+  }
+  const goalsH = statEntriesFor(f,"goals_scored","home"), goalsA = statEntriesFor(f,"goals_scored","away");
+  const astH = statEntriesFor(f,"assists","home"), astA = statEntriesFor(f,"assists","away");
+  const ycH = statEntriesFor(f,"yellow_cards","home"), ycA = statEntriesFor(f,"yellow_cards","away");
+  const rcH = statEntriesFor(f,"red_cards","home"), rcA = statEntriesFor(f,"red_cards","away");
+  const svH = statEntriesFor(f,"saves","home"), svA = statEntriesFor(f,"saves","away");
+  const bonH = statEntriesFor(f,"bonus","home"), bonA = statEntriesFor(f,"bonus","away");
+  openSheet(`
+    <div class="md-header">
+      <div style="text-align:center">${crestSvg(f.home,'mdh2')}<div class="code">${f.home}</div></div>
+      <div class="md-score">${f.homeScore} - ${f.awayScore}</div>
+      <div style="text-align:center">${crestSvg(f.away,'mda2')}<div class="code">${f.away}</div></div>
+    </div>
+    <div class="md-time">${fmtNPT(new Date(f.kickoff), {weekday:'short',day:'numeric',month:'short'})} · Full Time</div>
+    ${renderScoringSection("⚽ Goals Scored", goalsH, goalsA, e => (GOAL_POINTS[e.pos]||4)*e.value)}
+    ${renderScoringSection("🎯 Assists", astH, astA, e => 3*e.value)}
+    ${renderCardSection("🟨 Yellow Cards", ycH, ycA, -1)}
+    ${renderCardSection("🟥 Red Cards", rcH, rcA, -3)}
+    ${renderPlainCountSection("🧤 Saves", svH, svA)}
+    ${renderBonusSection("⭐ Bonus Points", bonH, bonA)}
+  `);
 }
 
 // ---------- Awards: roast + Top 5 (no more fake comments) ----------
@@ -1570,7 +1864,7 @@ document.getElementById("awards").addEventListener("click", async (e)=>{
     <div class="top5-row"><div class="n">${i+1}</div><div class="t">${m.teamName}</div><div class="v">${Math.round(a.metric(m)*10)/10} ${a.unit}</div></div>
   `).join("");
   const gifUrl = getAwardGif(a.id);
-  const gifHtml = gifUrl ? `<img src="${gifUrl}" alt="" style="width:100%;border-radius:14px;margin-bottom:12px;display:block;" onerror="this.style.display='none'" />` : "";
+  const gifHtml = gifUrl ? `<img class="award-gif" src="${gifUrl}" alt="" onerror="this.style.display='none'" />` : "";
   openSheet(`
     <div class="squad-header"><div style="font-size:22px">${a.emoji}</div><div><h2>${a.name}</h2><p>${winner.teamName}</p></div></div>
     ${gifHtml}
@@ -1714,6 +2008,147 @@ function renderMomentum(){
     </div>`;
   }).join("");
 }
+
+// ---------- Insights: Form Guide, Consistency, Bench Regret (new cards — top 5 preview, full ranking on click) ----------
+function renderFormGuide(){
+  const el = document.getElementById("form-list");
+  if(!GW_COUNT){ el.innerHTML = `<div class="placeholder-note">No synced gameweeks yet.</div>`; return; }
+  const S = seasonStats();
+  const ranked = top5(S.form3, true);
+  el.innerHTML = ranked.map((m,i) => `<div class="mini-rank-row"><span class="n">${i+1}</span><span class="t">${m.teamName}</span><span class="v">${S.form3(m).toFixed(1)}</span></div>`).join("");
+}
+function renderConsistencyCard(){
+  const el = document.getElementById("consistency-list");
+  if(!GW_COUNT){ el.innerHTML = `<div class="placeholder-note">No synced gameweeks yet.</div>`; return; }
+  const S = seasonStats();
+  const mostConsistent = top5(S.variance, false)[0];
+  const mostVolatile = top5(S.variance, true)[0];
+  el.innerHTML = `
+    <div class="mini-rank-row"><span class="n">🧊</span><span class="t">${mostConsistent.teamName}</span><span class="v">steadiest</span></div>
+    <div class="mini-rank-row"><span class="n">🎢</span><span class="t">${mostVolatile.teamName}</span><span class="v">wildest</span></div>
+  `;
+}
+function renderBenchRegret(){
+  const el = document.getElementById("bench-regret-list");
+  const sub = document.getElementById("bench-regret-sub");
+  if(!GW_COUNT){ el.innerHTML = `<div class="placeholder-note">No synced gameweeks yet.</div>`; sub.textContent = ""; return; }
+  const S = seasonStats();
+  const ranked = top5(S.benchTotal, true);
+  sub.textContent = `${ranked[0].teamName} leads the league in points left unused`;
+  el.innerHTML = ranked.map((m,i) => `<div class="mini-rank-row"><span class="n">${i+1}</span><span class="t">${m.teamName}</span><span class="v">${S.benchTotal(m)} pts</span></div>`).join("");
+}
+
+// ---------- Insights: click-to-detail — every clickable card opens a fuller ranked view ----------
+function rankedDetailRows(rankedManagers, valueFn, unit){
+  return rankedManagers.map((m,i) => `<div class="top5-row"><div class="n">${i+1}</div><div class="t">${m.teamName}</div><div class="v">${valueFn(m)} ${unit}</div></div>`).join("");
+}
+document.getElementById("view-insights").addEventListener("click", (e) => {
+  const card = e.target.closest(".kpi-card.clickable"); if(!card) return;
+  const type = card.dataset.detail;
+  const S = seasonStats();
+
+  if(type === "form"){
+    const ranked = [...managers].sort((a,b)=>S.form3(b)-S.form3(a));
+    openSheet(`
+      <div class="squad-header"><div style="font-size:22px">🏆</div><div><h2>Form Guide</h2><p>Average score, last 3 gameweeks</p></div></div>
+      ${rankedDetailRows(ranked, m=>S.form3(m).toFixed(1), "avg")}
+    `);
+  } else if(type === "consistency"){
+    const ranked = [...managers].sort((a,b)=>S.variance(a)-S.variance(b));
+    openSheet(`
+      <div class="squad-header"><div style="font-size:22px">🧊</div><div><h2>Consistency</h2><p>Steadiest at the top, most volatile at the bottom</p></div></div>
+      ${rankedDetailRows(ranked, m=>Math.round(S.variance(m)), "variance")}
+    `);
+  } else if(type === "bench"){
+    const ranked = [...managers].sort((a,b)=>S.benchTotal(b)-S.benchTotal(a));
+    openSheet(`
+      <div class="squad-header"><div style="font-size:22px">🪑</div><div><h2>Bench Regret</h2><p>Total points left unused on the bench, all season</p></div></div>
+      ${rankedDetailRows(ranked, m=>S.benchTotal(m), "pts")}
+    `);
+  } else if(type === "momentum"){
+    if(GW_COUNT < MIN_GW_FOR_MOMENTUM){ openSheet(`<div class="sub">Momentum unlocks after GW${MIN_GW_FOR_MOMENTUM}.</div>`); return; }
+    const ranks = computeRankHistory();
+    const window = Math.min(3, GW_COUNT-1);
+    const ranked = managers.map(m => {
+      const series = ranks[m.id].slice(-(window+1));
+      return {m, delta: series[0]-series[series.length-1]};
+    }).sort((a,b)=>b.delta-a.delta);
+    openSheet(`
+      <div class="squad-header"><div style="font-size:22px">📈</div><div><h2>Momentum</h2><p>Rank change over the last ${window} gameweeks — everyone, ranked</p></div></div>
+      ${ranked.map((r,i)=>`<div class="top5-row"><div class="n">${i+1}</div><div class="t">${r.m.teamName}</div><div class="v" style="color:${r.delta>0?'var(--green)':r.delta<0?'var(--red)':'var(--muted)'}">${r.delta>0?'▲':r.delta<0?'▼':'–'}${Math.abs(r.delta)}</div></div>`).join("")}
+    `);
+  } else if(type === "leadchanges"){
+    const leaders = [];
+    for(let gw=1; gw<=GW_COUNT; gw++){
+      const top = [...managers].sort((a,b)=>b.history[gw-1].totalPoints-a.history[gw-1].totalPoints)[0];
+      leaders.push({gw, team:top.teamName});
+    }
+    const stints = [];
+    leaders.forEach(l => {
+      const last = stints[stints.length-1];
+      if(last && last.team===l.team) last.to = l.gw;
+      else stints.push({team:l.team, from:l.gw, to:l.gw});
+    });
+    openSheet(`
+      <div class="squad-header"><div style="font-size:22px">👑</div><div><h2>Lead Changes</h2><p>Every stint at #1, gameweek by gameweek</p></div></div>
+      ${stints.map(s=>`<div class="lead-item"><span class="nm">${s.team}</span><span style="color:var(--muted)">GW${s.from}${s.to>s.from?'–'+s.to:''}</span></div>`).join("")}
+    `);
+  } else if(type === "titlerace"){
+    const sorted = [...managers].sort((a,b)=>b.totalPoints-a.totalPoints);
+    const gaps = [];
+    for(let i=0;i<sorted.length-1;i++) gaps.push({a:sorted[i], b:sorted[i+1], gap: sorted[i].totalPoints-sorted[i+1].totalPoints, posA:i+1});
+    const closest = [...gaps].sort((a,b)=>a.gap-b.gap).slice(0,5);
+    openSheet(`
+      <div class="squad-header"><div style="font-size:22px">🔥</div><div><h2>Title Race</h2><p>The 5 closest gaps anywhere in the table</p></div></div>
+      ${closest.map(g=>`<div class="top5-row"><div class="n">#${g.posA}</div><div class="t">${g.a.teamName} vs ${g.b.teamName}</div><div class="v">${g.gap} pt${g.gap===1?'':'s'}</div></div>`).join("")}
+    `);
+  } else if(type === "nemesis"){
+    const ranks = computeRankHistory();
+    const adjCount = {};
+    for(let gwIdx=0; gwIdx<GW_COUNT; gwIdx++){
+      const byRank = [...managers].sort((a,b)=> ranks[a.id][gwIdx]-ranks[b.id][gwIdx]);
+      for(let i=0;i<byRank.length-1;i++){
+        const key = [byRank[i].id, byRank[i+1].id].sort((x,y)=>x-y).join("-");
+        adjCount[key] = (adjCount[key]||0)+1;
+      }
+    }
+    const topPairs = Object.entries(adjCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
+    openSheet(`
+      <div class="squad-header"><div style="font-size:22px">😤</div><div><h2>Nemesis</h2><p>Top 5 pairs who keep landing next to each other</p></div></div>
+      ${topPairs.map(([key,count],i)=>{
+        const [ida,idb] = key.split("-").map(Number);
+        const a = managers.find(m=>m.id===ida), b = managers.find(m=>m.id===idb);
+        return `<div class="top5-row"><div class="n">${i+1}</div><div class="t">${a?.teamName} & ${b?.teamName}</div><div class="v">${count}/${GW_COUNT} GWs</div></div>`;
+      }).join("")}
+    `);
+  } else if(type === "doppel"){
+    getLatestSquadsRollup().then(rollup => {
+      if(!rollup){ openSheet(`<div class="sub">No synced gameweeks yet.</div>`); return; }
+      const entries = Object.entries(rollup.entries);
+      const pairs = [];
+      for(let i=0;i<entries.length;i++) for(let j=i+1;j<entries.length;j++){
+        pairs.push({a:entries[i][1].teamName, b:entries[j][1].teamName, overlap:squadOverlap(entries[i][1].starting, entries[j][1].starting)});
+      }
+      const top = pairs.sort((a,b)=>b.overlap-a.overlap).slice(0,5);
+      openSheet(`
+        <div class="squad-header"><div style="font-size:22px">🦄</div><div><h2>Doppelgänger</h2><p>Top 5 most similar starting XIs</p></div></div>
+        ${top.map((p,i)=>`<div class="top5-row"><div class="n">${i+1}</div><div class="t">${p.a} & ${p.b}</div><div class="v">${p.overlap}/11</div></div>`).join("")}
+      `);
+    });
+  } else if(type === "template"){
+    getLatestSquadsRollup().then(rollup => {
+      if(!rollup){ openSheet(`<div class="sub">No synced gameweeks yet.</div>`); return; }
+      const entries = Object.values(rollup.entries);
+      const ownership = {};
+      entries.forEach(e => e.starting.forEach(id => { ownership[id] = (ownership[id]||0)+1; }));
+      const ranked = Object.entries(ownership).sort((a,b)=>b[1]-a[1]).slice(0,15);
+      openSheet(`
+        <div class="squad-header"><div style="font-size:22px">🐑</div><div><h2>Full Ownership Breakdown</h2><p>Every widely-owned player, most to least</p></div></div>
+        ${ranked.map(([id,count],i)=>`<div class="top5-row"><div class="n">${i+1}</div><div class="t">${playerInfo(id).n}</div><div class="v">${count}/${entries.length}</div></div>`).join("")}
+      `);
+    });
+  }
+});
 
 // ---------- Insights: Lead Changes (how many times #1 has changed hands) ----------
 function renderLeadChanges(){
@@ -2100,29 +2535,6 @@ function closeSheet(){ overlay.classList.remove("show"); sheet.classList.remove(
 overlay.addEventListener("click", closeSheet);
 document.getElementById("sheet-close").addEventListener("click", closeSheet);
 
-let jUid = 0;
-function jerseyCard(elementId, pts, isCap){
-  jUid++;
-  const uid = jUid;
-  const info = playerInfo(elementId);
-  return `
-    <div class="jersey-wrap ${isCap?'cap-ring':''}">
-      <button class="jersey-btn" data-element="${elementId}" data-uid="${uid}">
-        ${jerseySvg(info.team, uid)}
-        <div class="jname">${info.n}${isCap?' (C)':''}</div>
-        <div class="jteam">${info.team}</div>
-      </button>
-      <div class="jpts">${pts}</div>
-    </div>`;
-}
-const gwPlayerPointsCache = {};
-async function getGwPlayerPoints(gw){
-  if(gwPlayerPointsCache[gw]) return gwPlayerPointsCache[gw];
-  const snap = await getDoc(doc(db, `gwPlayerPoints/gw${gw}`));
-  const data = snap.exists() ? snap.data().points : {};
-  gwPlayerPointsCache[gw] = data;
-  return data;
-}
 const gwPlayerStatsCache = {};
 async function getGwPlayerStats(gw){
   if(gwPlayerStatsCache[gw]) return gwPlayerStatsCache[gw];
@@ -2156,69 +2568,177 @@ function renderStatBreakdown(stats){
   });
   return rows.join("");
 }
-document.getElementById("standings").addEventListener("click", async (e)=>{
-  const row = e.target.closest(".row"); if(!row) return;
-  const m = managers.find(x=>x.id==row.dataset.mgr);
-  const gwForSquad = mode==="overall" ? GW_COUNT : mode;
-  if(!gwForSquad){ openSheet(`<div class="sub">No synced gameweeks yet.</div>`); return; }
-  openSheet(`<div class="sub">Loading squad…</div>`);
-  const squad = await getManagerSquad(m.id, gwForSquad);
+// ================= Full-screen Pitch View =================
+function pitchMarkingsSvg(){
+  return `<svg class="pitch-svg" viewBox="0 0 400 700" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="grass" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#0F3D22"/><stop offset="100%" stop-color="#0A2E19"/>
+      </linearGradient>
+    </defs>
+    <rect width="400" height="700" fill="url(#grass)"/>
+    ${Array.from({length:10},(_,i)=>`<rect x="${i*40}" y="0" width="40" height="700" fill="${i%2===0?'rgba(255,255,255,.025)':'transparent'}"/>`).join("")}
+    <g stroke="rgba(255,255,255,.55)" stroke-width="2" fill="none">
+      <rect x="14" y="14" width="372" height="672" rx="4"/>
+      <rect x="140" y="14" width="120" height="42"/>
+      <rect x="80" y="14" width="240" height="118"/>
+      <path d="M 145 132 A 55 55 0 0 0 255 132" />
+      <circle cx="200" cy="132" r="2.5" fill="rgba(255,255,255,.55)"/>
+      <line x1="14" y1="360" x2="386" y2="360" />
+      <circle cx="200" cy="360" r="62" />
+      <circle cx="200" cy="360" r="2.5" fill="rgba(255,255,255,.55)"/>
+      <path d="M 14 672 A 14 14 0 0 0 28 686" />
+      <path d="M 386 672 A 14 14 0 0 1 372 686" />
+    </g>
+  </svg>`;
+}
+let pvUid = 0;
+function renderPvJersey(elementId, pts, isCap){
+  pvUid++;
+  const info = playerInfo(elementId);
+  return `<div class="pv-jersey ${isCap?'cap-badge':''}" data-element="${elementId}">
+    ${jerseySvg(info.team, 'pv'+pvUid)}
+    <div class="pn">${info.n}${isCap?' (C)':''}</div>
+    <div class="pp">${pts}</div>
+  </div>`;
+}
+function renderStadiumTiers(rows, seatsPerRow){
+  let html = `<div class="stand-tiers">`;
+  const colors = ["#2b1a45","#3a2359","#241536","#402a5e"];
+  for(let r=0; r<rows; r++){
+    const scale = 1 - r*0.08;
+    const translateY = -r*3;
+    html += `<div class="stand-row" style="transform:translateY(${translateY}px) scale(${scale});opacity:${1-r*0.12}">`;
+    for(let s=0; s<seatsPerRow; s++){
+      html += `<div class="pv-seat" style="background:${colors[(r+s)%colors.length]}"></div>`;
+    }
+    html += `</div>`;
+  }
+  return html + `</div>`;
+}
+async function renderPitchStage(manager, gw, isSplit){
+  const squad = await getManagerSquad(manager.id, gw);
   if(!squad){
-    openSheet(`
-      <div class="squad-header"><div class="avatar">${initials(m.teamName)}</div><div><h2>${m.teamName}</h2><p>${m.managerName}</p></div></div>
-      <div class="sub">Squad not synced for GW${gwForSquad} yet.</div>
-    `);
-    return;
+    return `
+      <div class="pv-header-info"><div class="av">${initials(manager.teamName)}</div><div><div class="nm">${manager.teamName}</div><div class="sc">${manager.managerName}</div></div></div>
+      <div class="sub" style="padding:0 14px;">Squad not synced for GW${gw} yet.</div>
+    `;
   }
   const posOrder = {GKP:0,DEF:1,MID:2,FWD:3};
   const lines = [[],[],[],[]];
   squad.starting.forEach(p => { const pos = playerInfo(p.element).pos; lines[posOrder[pos]].push(p); });
-  const histEntry = m.history.find(h=>h.gw===gwForSquad);
-  // Starting XI: show the actual points earned (captain's multiplier applied).
-  // Bench: show raw points scored, not multiplied — their multiplier is
-  // normally 0 since bench points don't count, and showing "0" for someone
-  // who actually scored would be misleading, not informative.
-  const pitchHtml = lines.map(line => `<div class="pline">${line.map(p=>jerseyCard(p.element, p.pts * (p.multiplier||1), p.isCaptain)).join("")}</div>`).join("");
-  const benchHtml = squad.bench.map(p=>jerseyCard(p.element, p.pts, false)).join("");
-  openSheet(`
-    <div class="squad-header">
-      <div class="avatar">${initials(m.teamName)}</div>
-      <div><h2>${m.teamName}</h2><p>${m.managerName} · GW${gwForSquad}: ${histEntry?.points ?? '—'} pts</p></div>
+  const histEntry = manager.history.find(h=>h.gw===gw);
+  const zoneClass = ["gk","def","mid","fwd"];
+  const pitchHtml = lines.map((line,i) => `<div class="pv-zone ${zoneClass[i]}">${line.map(p=>renderPvJersey(p.element, p.pts*(p.multiplier||1), p.isCaptain)).join("")}</div>`).join("");
+  const benchHtml = squad.bench.map(p=>renderPvJersey(p.element, p.pts, false)).join("");
+  return `
+    <div class="pv-header-info">
+      <div class="av ${managerClubs[manager.id]?'has-crest':''}">${managerClubs[manager.id] ? crestSvg(managerClubs[manager.id],'pvav'+manager.id) : initials(manager.teamName)}</div>
+      <div><div class="nm">${manager.teamName}</div><div class="sc">${manager.managerName} · GW${gw}: ${histEntry?.points ?? '—'} pts</div></div>
     </div>
-    <div class="pitch">${pitchHtml}</div>
-    <div class="bench-title">Bench</div>
-    <div class="bench-row">${benchHtml}</div>
-  `);
-  document.getElementById("sheet-content").addEventListener("click", async (ev)=>{
-    const btn = ev.target.closest(".jersey-btn"); if(!btn) return;
-    const elementId = btn.dataset.element;
-    const info = playerInfo(elementId);
-    const existing = btn.parentElement.querySelector(".gw-dropdown");
-    if(existing){ existing.remove(); return; }
-    document.querySelectorAll(".gw-dropdown").forEach(d=>d.remove());
-    const dd = document.createElement("div");
-    dd.className = "gw-dropdown";
+    <div class="pitch-stage">
+      <div class="pitch-wrap">
+        ${pitchMarkingsSvg()}
+        <div class="goal-scene">
+          <div class="goal-frame">
+            <div class="goal-crossbar"></div>
+            <div class="goal-post left"></div>
+            <div class="goal-post right"></div>
+            <div class="goal-net"></div>
+          </div>
+          <div class="goal-shadow"></div>
+        </div>
+        ${pitchHtml}
+      </div>
+    </div>
+    <div class="stand-wrap">
+      <div class="stand-title">Bench</div>
+      ${renderStadiumTiers(4, isSplit?9:14)}
+      <div class="bench-front-row">${squad.bench.map(p=>`<div class="bench-seat"><div class="bench-seat-back">${renderPvJersey(p.element, p.pts, false)}</div></div>`).join("")}</div>
+    </div>
+  `;
+}
 
-    if(mode === "overall"){
-      // Overall view: show the trend across every synced gameweek
-      dd.innerHTML = `<div class="gwd-title">${info.n} · by GW</div><div class="gwd-bars">Loading…</div>`;
-      btn.parentElement.appendChild(dd);
-      const weekly = [];
-      for(let gw=1; gw<=GW_COUNT; gw++){
-        const pts = await getGwPlayerPoints(gw);
-        weekly.push(pts[elementId] ?? 0);
-      }
-      const maxV = Math.max(...weekly, 1);
-      const bars = weekly.map((v,i)=>`<div class="gwd-bar" style="height:${Math.max(v/maxV*30,3)}px"><b>${v}</b><span>${i+1}</span></div>`).join("");
-      dd.querySelector(".gwd-bars").innerHTML = bars;
-    } else {
-      // A specific gameweek: show the full stat breakdown for that week only
-      dd.innerHTML = `<div class="gwd-title">${info.n} · GW${mode}</div><div class="gwd-stats">Loading…</div>`;
-      btn.parentElement.appendChild(dd);
-      const stats = await getGwPlayerStats(mode);
-      dd.querySelector(".gwd-stats").innerHTML = renderStatBreakdown(stats[elementId]);
-    }
-  });
+let pvCurrentManagerId = null;
+let pvCurrentGw = null;
+let pvCompareManagerId = null;
+let pvCompareMode = false;
+
+async function renderPvBody(){
+  const body = document.getElementById("pv-body");
+  const m1 = managers.find(m=>m.id===pvCurrentManagerId);
+  if(!m1) return;
+  if(pvCompareMode && pvCompareManagerId !== null){
+    const m2 = managers.find(m=>m.id===pvCompareManagerId);
+    body.innerHTML = `<div class="sub" style="padding:20px;text-align:center;">Loading…</div>`;
+    const [h1, h2] = await Promise.all([renderPitchStage(m1, pvCurrentGw, true), renderPitchStage(m2, pvCurrentGw, true)]);
+    body.innerHTML = `<div class="pv-split"><div class="pv-team-col">${h1}</div><div class="pv-team-col">${h2}</div></div>`;
+  } else {
+    body.innerHTML = `<div class="sub" style="padding:20px;text-align:center;">Loading…</div>`;
+    body.innerHTML = await renderPitchStage(m1, pvCurrentGw, false);
+  }
+}
+
+async function openPitchView(managerId){
+  if(!GW_COUNT){ showToast("No synced gameweeks yet"); return; }
+  pvCurrentManagerId = managerId;
+  pvCurrentGw = mode === "overall" ? GW_COUNT : mode;
+  pvCompareMode = false;
+  pvCompareManagerId = null;
+  document.getElementById("pv-compare-btn").classList.remove("active");
+  const gwSel = document.getElementById("pv-gw-select");
+  gwSel.innerHTML = Array.from({length:GW_COUNT},(_,i)=>i+1).map(gw=>`<option value="${gw}" ${gw===pvCurrentGw?'selected':''}>GW${gw}</option>`).join("");
+  document.getElementById("pitch-overlay").classList.remove("hidden");
+  await renderPvBody();
+}
+document.getElementById("pv-close").addEventListener("click", () => {
+  document.getElementById("pitch-overlay").classList.add("hidden");
+});
+document.getElementById("pv-gw-select").addEventListener("change", async (e) => {
+  pvCurrentGw = parseInt(e.target.value);
+  await renderPvBody();
+});
+document.getElementById("pv-compare-btn").addEventListener("click", () => {
+  if(pvCompareMode){
+    pvCompareMode = false;
+    document.getElementById("pv-compare-btn").classList.remove("active");
+    renderPvBody();
+    return;
+  }
+  const list = document.getElementById("compare-list");
+  list.innerHTML = managers.filter(m=>m.id!==pvCurrentManagerId).map(m => `
+    <div class="compare-opt" data-id="${m.id}">
+      <div class="av ${managerClubs[m.id]?'has-crest':''}">${managerClubs[m.id] ? crestSvg(managerClubs[m.id],'cmp'+m.id) : initials(m.teamName)}</div>
+      <div>${m.teamName}</div>
+    </div>
+  `).join("");
+  document.getElementById("compare-overlay").classList.remove("hidden");
+});
+document.getElementById("compare-overlay").addEventListener("click", (e) => {
+  if(e.target.id === "compare-overlay"){ document.getElementById("compare-overlay").classList.add("hidden"); return; }
+  const opt = e.target.closest(".compare-opt"); if(!opt) return;
+  pvCompareManagerId = parseInt(opt.dataset.id);
+  pvCompareMode = true;
+  document.getElementById("pv-compare-btn").classList.add("active");
+  document.getElementById("compare-overlay").classList.add("hidden");
+  renderPvBody();
+});
+// Tapping a player anywhere in the pitch view opens their full stat
+// breakdown for the currently-selected gameweek, via the existing bottom
+// sheet — routing through a fixed-position sheet instead of an inline
+// popup avoids clipping against the pitch's rounded-corner overflow:hidden.
+document.getElementById("pv-body").addEventListener("click", async (e) => {
+  const jersey = e.target.closest(".pv-jersey"); if(!jersey) return;
+  const elementId = jersey.dataset.element;
+  const info = playerInfo(elementId);
+  openSheet(`<div class="squad-header"><div style="font-size:22px">⚽</div><div><h2>${info.n}</h2><p>GW${pvCurrentGw} breakdown</p></div></div><div id="pv-player-stats" class="gwd-stats">Loading…</div>`);
+  const stats = await getGwPlayerStats(pvCurrentGw);
+  document.getElementById("pv-player-stats").innerHTML = renderStatBreakdown(stats[elementId]);
+});
+
+document.getElementById("standings").addEventListener("click", async (e)=>{
+  const row = e.target.closest(".row"); if(!row) return;
+  await openPitchView(parseInt(row.dataset.mgr));
 });
 
 function renderAll(){ renderHeroStats(); renderStandings(); }
@@ -2233,6 +2753,9 @@ async function boot(){
   renderAwards();
   renderPrize();
   renderMomentum();
+  renderFormGuide();
+  renderConsistencyCard();
+  renderBenchRegret();
   renderLeadChanges();
   renderH2H();
   renderNemesis();
@@ -2254,6 +2777,16 @@ async function boot(){
     openOnboarding(1); // first-time visitor — the club-tile tap later triggers the intro itself
   } else {
     renderViewingPill();
+    // Silently backfill this manager's club pick into the shared collection
+    // if it isn't there yet — covers everyone who picked their club before
+    // this feature existed, so their badge shows up for others without
+    // needing to redo onboarding.
+    const me = managers.find(m => m.teamName === ident.team);
+    if(me && managerClubs[me.id] !== ident.club){
+      managerClubs[me.id] = ident.club;
+      setDoc(doc(db, `managerClubs/${me.id}`), { club: ident.club }).catch(()=>{});
+      renderStandings();
+    }
     // Returning visitor: no click has happened yet this page load, and
     // browsers block audio until one does — so gate the intro behind a tap
     // instead of trying to autoplay it.
