@@ -77,9 +77,16 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
   .tab{flex:0 0 auto;flex-direction:row;gap:7px;font-size:13px;padding:8px 4px;}
   .tab .ic{font-size:16px;}
   .awards-grid{grid-template-columns:repeat(auto-fit, minmax(230px,1fr));}
-  #view-insights.active{display:grid;grid-template-columns:1fr 1fr;column-gap:20px;align-content:start;}
-  #view-insights .section-title{grid-column:1/-1;}
   .highlights-grid{grid-template-columns:repeat(4, 1fr);}
+}
+/* Insights: two-column layout on anything wide enough to fit it comfortably —
+   uses CSS multi-column (not grid) specifically because each section-title +
+   card is wrapped as one .insight-block unit, and multi-column is what
+   correctly keeps a whole block together in one column via break-inside,
+   rather than letting a title and its card land in different columns. */
+@media (min-width: 700px){
+  #view-insights.active{column-count:2;column-gap:20px;}
+  #view-insights .insight-block{break-inside:avoid;-webkit-column-break-inside:avoid;display:inline-block;width:100%;vertical-align:top;}
 }
 
 .section-title{font-family:var(--font-d);font-size:16px;font-weight:700;margin:16px 0 10px;display:flex;align-items:center;gap:8px;}
@@ -565,103 +572,133 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
   </div>
 
   <div id="view-insights" class="view">
-    <div class="section-title"><span class="bar"></span>Momentum</div>
-    <div class="kpi-card clickable" data-detail="momentum">
-      <h3>Who's heating up, who's cooling off</h3>
-      <div class="sub" id="momentum-sub">Rank change over the last few gameweeks</div>
-      <div id="momentum-list"></div>
-      <div class="tap-more">tap for the full ranking →</div>
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Momentum</div>
+      <div class="kpi-card clickable" data-detail="momentum">
+        <h3>Who's heating up, who's cooling off</h3>
+        <div class="sub" id="momentum-sub">Rank change over the last few gameweeks</div>
+        <div id="momentum-list"></div>
+        <div class="tap-more">tap for the full ranking →</div>
+      </div>
     </div>
 
-    <div class="section-title"><span class="bar"></span>Form Guide</div>
-    <div class="kpi-card clickable" data-detail="form">
-      <h3>Best average over the last 3 gameweeks</h3>
-      <div class="sub">Who's actually hot right now, not just overall</div>
-      <div id="form-list"></div>
-      <div class="tap-more">tap for the full ranking →</div>
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Form Guide</div>
+      <div class="kpi-card clickable" data-detail="form">
+        <h3>Best average over the last 3 gameweeks</h3>
+        <div class="sub">Who's actually hot right now, not just overall</div>
+        <div id="form-list"></div>
+        <div class="tap-more">tap for the full ranking →</div>
+      </div>
     </div>
 
-    <div class="section-title"><span class="bar"></span>Consistency</div>
-    <div class="kpi-card clickable" data-detail="consistency">
-      <h3>Steady scorers vs boom-or-bust</h3>
-      <div class="sub">Based on week-to-week score variance</div>
-      <div id="consistency-list"></div>
-      <div class="tap-more">tap for the full ranking →</div>
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Consistency</div>
+      <div class="kpi-card clickable" data-detail="consistency">
+        <h3>Steady scorers vs boom-or-bust</h3>
+        <div class="sub">Based on week-to-week score variance</div>
+        <div id="consistency-list"></div>
+        <div class="tap-more">tap for the full ranking →</div>
+      </div>
     </div>
 
-    <div class="section-title"><span class="bar"></span>Bench Regret</div>
-    <div class="kpi-card clickable" data-detail="bench">
-      <h3>Points left unused on the bench, all season</h3>
-      <div class="sub" id="bench-regret-sub"></div>
-      <div id="bench-regret-list"></div>
-      <div class="tap-more">tap for the full ranking →</div>
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Bench Regret</div>
+      <div class="kpi-card clickable" data-detail="bench">
+        <h3>Points left unused on the bench, all season</h3>
+        <div class="sub" id="bench-regret-sub"></div>
+        <div id="bench-regret-list"></div>
+        <div class="tap-more">tap for the full ranking →</div>
+      </div>
     </div>
 
-    <div class="section-title"><span class="bar"></span>Smart Money</div>
-    <div class="kpi-card clickable" data-detail="value">
-      <h3>Team value growth this season</h3>
-      <div class="sub">Who's turned early transfers into real squad value</div>
-      <div id="value-list"></div>
-      <div class="tap-more">tap for the full ranking →</div>
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Smart Money</div>
+      <div class="kpi-card clickable" data-detail="value">
+        <h3>Team value growth this season</h3>
+        <div class="sub">Who's turned early transfers into real squad value</div>
+        <div id="value-list"></div>
+        <div class="tap-more">tap for the full ranking →</div>
+      </div>
     </div>
 
-    <div class="section-title"><span class="bar"></span>Transfer Verdict</div>
-    <div class="kpi-card">
-      <h3>Best & worst move of the gameweek</h3>
-      <div class="sub" id="transfer-verdict-sub">Points the incoming player scored vs. the one dropped</div>
-      <div id="transfer-verdict"></div>
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Transfer Verdict</div>
+      <div class="kpi-card">
+        <h3>Best & worst move of the gameweek</h3>
+        <div class="sub" id="transfer-verdict-sub">Points the incoming player scored vs. the one dropped</div>
+        <div id="transfer-verdict"></div>
+      </div>
     </div>
 
-    <div class="section-title"><span class="bar"></span>Formation Trends</div>
-    <div class="kpi-card">
-      <h3>What the league's lining up with this week</h3>
-      <div class="sub" id="formation-sub"></div>
-      <div id="formation-list"></div>
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Formation Trends</div>
+      <div class="kpi-card">
+        <h3>What the league's lining up with this week</h3>
+        <div class="sub" id="formation-sub"></div>
+        <div id="formation-list"></div>
+      </div>
     </div>
 
-    <div class="section-title"><span class="bar"></span>Lead Changes</div>
-    <div class="kpi-card clickable" data-detail="leadchanges" id="lead-changes-card"></div>
-
-    <div class="section-title"><span class="bar"></span>Title Race</div>
-    <div class="kpi-card clickable" data-detail="titlerace" id="h2h-card"></div>
-
-    <div class="section-title"><span class="bar"></span>Nemesis</div>
-    <div class="kpi-card clickable" data-detail="nemesis" id="nemesis-card"></div>
-
-    <div class="section-title"><span class="bar"></span>Chip Usage</div>
-    <div class="kpi-card">
-      <h3>Who's played what, and did it pay off</h3>
-      <div class="sub">Compares that GW's score to the manager's season average</div>
-      <div id="chip-timeline"></div>
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Lead Changes</div>
+      <div class="kpi-card clickable" data-detail="leadchanges" id="lead-changes-card"></div>
     </div>
 
-    <div class="section-title"><span class="bar"></span>Captaincy Alpha</div>
-    <div class="kpi-card">
-      <h3>Points actually gained or lost from captaincy calls</h3>
-      <div class="sub">Captain's score minus the next-best player in their own squad, summed all season</div>
-      <div id="cap-report"></div>
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Title Race</div>
+      <div class="kpi-card clickable" data-detail="titlerace" id="h2h-card"></div>
     </div>
 
-    <div class="section-title"><span class="bar"></span>Doppelgänger</div>
-    <div class="kpi-card clickable" data-detail="doppel" id="doppel-card"></div>
-
-    <div class="section-title"><span class="bar"></span>Transfer Activity</div>
-    <div class="kpi-card">
-      <h3>Who moved who this gameweek</h3>
-      <div class="sub" id="transfers-sub">Live — updates as people make moves before the deadline</div>
-      <div id="transfer-activity"></div>
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Nemesis</div>
+      <div class="kpi-card clickable" data-detail="nemesis" id="nemesis-card"></div>
     </div>
 
-    <div class="section-title"><span class="bar"></span>Template vs Differential</div>
-    <div class="kpi-card clickable" data-detail="template">
-      <h3>Most-owned XI across the league</h3>
-      <div class="sub">The "template" everyone's copying</div>
-      <div id="template-list"></div>
-      <div class="tap-more">tap for the full breakdown →</div>
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Chip Usage</div>
+      <div class="kpi-card">
+        <h3>Who's played what, and did it pay off</h3>
+        <div class="sub">Compares that GW's score to the manager's season average</div>
+        <div id="chip-timeline"></div>
+      </div>
     </div>
-    <div class="kpi-card">
-      <h3>🦄 Differential Menace</h3>
-      <div class="sub" id="diff-sub"></div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Captaincy Alpha</div>
+      <div class="kpi-card">
+        <h3>Points actually gained or lost from captaincy calls</h3>
+        <div class="sub">Captain's score minus the next-best player in their own squad, summed all season</div>
+        <div id="cap-report"></div>
+      </div>
+    </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Doppelgänger</div>
+      <div class="kpi-card clickable" data-detail="doppel" id="doppel-card"></div>
+    </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Transfer Activity</div>
+      <div class="kpi-card">
+        <h3>Who moved who this gameweek</h3>
+        <div class="sub" id="transfers-sub">Live — updates as people make moves before the deadline</div>
+        <div id="transfer-activity"></div>
+      </div>
+    </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Template vs Differential</div>
+      <div class="kpi-card clickable" data-detail="template">
+        <h3>Most-owned XI across the league</h3>
+        <div class="sub">The "template" everyone's copying</div>
+        <div id="template-list"></div>
+        <div class="tap-more">tap for the full breakdown →</div>
+      </div>
+      <div class="kpi-card">
+        <h3>🦄 Differential Menace</h3>
+        <div class="sub" id="diff-sub"></div>
+      </div>
     </div>
   </div>
 
