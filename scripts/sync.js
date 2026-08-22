@@ -117,6 +117,36 @@ async function main() {
   const nextEvent = events.find((e) => e.is_next) || events.find((e) => !e.finished);
   const nextDeadline = nextEvent ? nextEvent.deadline_time : null;
 
+  // 1e. Fixtures for this gameweek and the next one — powers the Table tab's
+  // match detail popups (goals/assists/cards/saves/bonus, split by team) and
+  // kickoff countdowns for matches that haven't happened yet. Element IDs are
+  // kept as-is (not resolved to names) to stay consistent with how squads are
+  // stored — the frontend already has playersMeta for that lookup.
+  async function syncFixturesForGw(targetGw) {
+    if (!targetGw) return;
+    const fixtures = await getJson(`${FPL_BASE}/fixtures/?event=${targetGw}`).catch(() => []);
+    const compact = fixtures.map((f) => ({
+      id: f.id,
+      home: teamsById.get(f.team_h) || "UNK",
+      away: teamsById.get(f.team_a) || "UNK",
+      kickoff: f.kickoff_time,
+      finished: f.finished,
+      homeScore: f.team_h_score,
+      awayScore: f.team_a_score,
+      stats: (f.stats || []).reduce((acc, s) => {
+        acc[s.identifier] = { home: s.h, away: s.a };
+        return acc;
+      }, {}),
+    }));
+    await db.doc(`gameweekFixtures/gw${targetGw}`).set({
+      gw: targetGw,
+      fixtures: compact,
+      syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+  await syncFixturesForGw(gw);
+  if (nextEvent && nextEvent.id !== gw) await syncFixturesForGw(nextEvent.id);
+
   // 2. League standings (classic league, single page is enough for <50 managers)
   const standings = await getJson(
     `${FPL_BASE}/leagues-classic/${LEAGUE_ID}/standings/`
