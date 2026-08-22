@@ -74,21 +74,40 @@ async function main() {
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
-  // 1c. This gameweek's live per-player points (only fetched once, shared by
+  // 1c. This gameweek's live per-player stats (only fetched once, shared by
   // every manager below) — the picks endpoint tells us WHO was picked, this
-  // endpoint tells us what they actually scored that week.
-  let livePointsByElement = {};
+  // endpoint tells us what they actually did that week: goals, assists,
+  // cards, minutes, etc. — not just a total points number.
+  let livePointsByElement = {};   // element -> total_points (kept for quick lookups elsewhere)
+  let liveStatsByElement = {};    // element -> full stat breakdown
   if (gw) {
     const live = await getJson(`${FPL_BASE}/event/${gw}/live/`);
     for (const el of live.elements) {
       livePointsByElement[el.id] = el.stats.total_points;
+      liveStatsByElement[el.id] = {
+        pts: el.stats.total_points,
+        minutes: el.stats.minutes,
+        goals: el.stats.goals_scored,
+        assists: el.stats.assists,
+        cleanSheet: el.stats.clean_sheets,
+        goalsConceded: el.stats.goals_conceded,
+        ownGoals: el.stats.own_goals,
+        penSaved: el.stats.penalties_saved,
+        penMissed: el.stats.penalties_missed,
+        yellowCards: el.stats.yellow_cards,
+        redCards: el.stats.red_cards,
+        saves: el.stats.saves,
+        bonus: el.stats.bonus,
+      };
     }
     // Store it standalone too (not just embedded in each manager's squad) —
     // this is what lets the frontend show a single player's own GW-by-GW
-    // score trend, independent of who owned them.
+    // score trend, and their full stat breakdown for a specific week,
+    // independent of who owned them.
     await db.doc(`gwPlayerPoints/gw${gw}`).set({
       gw,
-      points: livePointsByElement,
+      points: livePointsByElement, // kept for the lightweight by-GW sparkline
+      stats: liveStatsByElement,   // full breakdown for the detail view
       syncedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
   }
@@ -121,15 +140,37 @@ async function main() {
   // 3. Per-manager: full history (one call gives every past GW) + this GW's picks (for captain/chip/bench)
   const gwResults = []; // { entryId, name, teamName, gwPoints, benchPoints, transfers, hits, captainId }
   const gwSquadsRollup = {}; // compact league-wide snapshot for this GW — powers Template/Differential/Doppelgänger without 30 separate reads
+  const gwTransfersRollup = {}; // who moved who in/out FOR this gw, league-wide — powers the Transfer Activity insight
+  const nextGwTransfersRollup = {}; // transfers already banked for the UPCOMING gw, made during the current pre-deadline window
 
   for (const m of managers) {
     const entryId = m.entry;
-    const [history, picks] = await Promise.all([
+    const [history, picks, transfersRaw] = await Promise.all([
       getJson(`${FPL_BASE}/entry/${entryId}/history/`),
       gw
         ? getJson(`${FPL_BASE}/entry/${entryId}/event/${gw}/picks/`).catch(() => null)
         : Promise.resolve(null),
+      (gw || nextEvent)
+        ? getJson(`${FPL_BASE}/entry/${entryId}/transfers/`).catch(() => [])
+        : Promise.resolve([]),
     ]);
+    // The transfers endpoint returns a manager's whole-season transfer
+    // history in one call. FPL tags each transfer with the gameweek it's
+    // FOR, not when it was made — so a transfer made right now, during the
+    // window before next gameweek's deadline, is tagged with that NEXT
+    // gameweek's number, not the current one. Capture both: this gw's
+    // (already-locked, historical) transfers, and the next gw's (live,
+    // still-changeable) ones — that second bucket is what "who's making
+    // moves right now" actually means.
+    const transfersThisGw = (transfersRaw || []).filter((t) => t.event === gw);
+    const transfersForNextGw = nextEvent ? (transfersRaw || []).filter((t) => t.event === nextEvent.id) : [];
+    if (transfersForNextGw.length > 0) {
+      nextGwTransfersRollup[entryId] = {
+        teamName: m.entry_name,
+        transfersIn: transfersForNextGw.map((t) => t.element_in),
+        transfersOut: transfersForNextGw.map((t) => t.element_out),
+      };
+    }
 
     // While a gameweek is live, FPL's season-history endpoint hasn't posted an
     // entry for it yet — but the picks endpoint's own entry_history reflects
@@ -186,31 +227,51 @@ async function main() {
     // re-fetch past gameweeks. This is what drives jerseys, Captaincy Alpha, and
     // chip-effectiveness on the frontend.
     if (gw && picks?.picks) {
+      // FPL's own `multiplier` field already handles the vice-captain
+      // takeover automatically (if the real captain gets 0 minutes, FPL
+      // moves the 2x bonus to the vice-captain and reflects that here).
+      // Stored as raw points + multiplier separately (not pre-multiplied) —
+      // Captaincy Alpha needs the raw score to correctly measure the
+      // marginal value of the captaincy decision itself; the squad view
+      // applies the multiplier only when actually displaying points.
       const withPoints = (p) => ({
         element: p.element,
         pts: livePointsByElement[p.element] ?? 0,
-        isCaptain: !!p.is_captain,
+        multiplier: p.multiplier ?? 1,
+        isCaptain: (p.multiplier ?? 1) >= 2, // whoever actually got the multiplier this week
       });
       const starting = picks.picks.filter((p) => p.position <= 11).map(withPoints);
       const bench = picks.picks.filter((p) => p.position > 11).map(withPoints);
       const chip = picks.active_chip || null;
+      const effectiveCaptainId = picks.picks.find((p) => (p.multiplier ?? 1) >= 2)?.element || captainPickId || null;
+      const transfersIn = transfersThisGw.map((t) => ({ element: t.element_in, cost: t.element_in_cost }));
+      const transfersOut = transfersThisGw.map((t) => ({ element: t.element_out, cost: t.element_out_cost }));
 
       await db.doc(`managers/${entryId}/gwSquads/gw${gw}`).set({
         gw,
-        captain: captainPickId || null,
+        captain: effectiveCaptainId,
         viceCaptain: picks.picks.find((p) => p.is_vice_captain)?.element || null,
         chip,
         starting,
         bench,
+        transfersIn,
+        transfersOut,
       });
 
       gwSquadsRollup[entryId] = {
         teamName: m.entry_name,
-        captain: captainPickId || null,
+        captain: effectiveCaptainId,
         chip,
         starting: starting.map((p) => p.element),
         bench: bench.map((p) => p.element),
       };
+      if (transfersThisGw.length > 0) {
+        gwTransfersRollup[entryId] = {
+          teamName: m.entry_name,
+          transfersIn: transfersIn.map((t) => t.element),
+          transfersOut: transfersOut.map((t) => t.element),
+        };
+      }
     }
 
     if (thisGw) {
@@ -232,6 +293,25 @@ async function main() {
     await db.doc(`gameweekSquads/gw${gw}`).set({
       gw,
       entries: gwSquadsRollup,
+      syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+  if (gw && Object.keys(gwTransfersRollup).length > 0) {
+    await db.doc(`gameweekTransfers/gw${gw}`).set({
+      gw,
+      entries: gwTransfersRollup,
+      syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+  // Live, pre-deadline transfers for the upcoming gameweek. Note this writes
+  // to the exact same doc path (`gameweekTransfers/gw{N}`) that the block
+  // above will eventually take over once that gameweek actually starts —
+  // so the picture naturally hands off from "live/incomplete" to "locked/
+  // final" without any special reconciliation needed.
+  if (nextEvent && Object.keys(nextGwTransfersRollup).length > 0) {
+    await db.doc(`gameweekTransfers/gw${nextEvent.id}`).set({
+      gw: nextEvent.id,
+      entries: nextGwTransfersRollup,
       syncedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
   }
