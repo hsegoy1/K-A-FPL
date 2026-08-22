@@ -90,7 +90,9 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .row.gold{border-color:rgba(255,210,63,.5);background:linear-gradient(90deg, rgba(255,210,63,.1), var(--panel) 40%);}
 .pos{font-family:var(--font-m);font-size:13px;color:var(--muted);width:20px;text-align:center;}
 .row.gold .pos{color:var(--gold);font-weight:700;}
-.avatar{width:34px;height:34px;border-radius:10px;background:var(--grad);display:flex;align-items:center;justify-content:center;font-family:var(--font-d);font-weight:700;font-size:13px;color:#0D0715;flex-shrink:0;}
+.avatar{width:34px;height:34px;border-radius:10px;background:var(--grad);display:flex;align-items:center;justify-content:center;font-family:var(--font-d);font-weight:700;font-size:13px;color:#0D0715;flex-shrink:0;overflow:hidden;}
+.avatar.has-crest{background:var(--panel);padding:3px;}
+.avatar .crest{border-radius:6px;}
 .rinfo{flex:1;min-width:0;}
 .rinfo .team{font-family:var(--font-d);font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .rinfo .mgr{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -132,6 +134,10 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .gw-dropdown{position:absolute;top:100%;left:50%;transform:translateX(-50%);background:#0D0715;border:1px solid var(--accent1);border-radius:10px;padding:8px 10px;z-index:5;white-space:nowrap;box-shadow:0 8px 20px rgba(0,0,0,.5);margin-top:4px;}
 .gw-dropdown .gwd-title{font-size:9px;color:var(--muted);text-transform:uppercase;margin-bottom:4px;}
 .gw-dropdown .gwd-bars{display:flex;gap:5px;align-items:flex-end;height:36px;}
+.gw-dropdown .gwd-stats{display:flex;flex-direction:column;gap:4px;min-width:140px;}
+.gwd-stat-row{display:flex;justify-content:space-between;gap:14px;font-size:11px;color:var(--text);}
+.gwd-stat-row span:last-child{font-family:var(--font-m);color:var(--accent2);}
+.gwd-nostat{font-size:11px;color:var(--muted);}
 .gwd-bar{width:12px;background:var(--grad);border-radius:2px 2px 0 0;min-height:2px;position:relative;}
 .gwd-bar span{position:absolute;bottom:-14px;left:0;right:0;text-align:center;font-size:7px;color:var(--muted);}
 .gwd-bar b{position:absolute;top:-13px;left:0;right:0;text-align:center;font-size:8px;color:var(--text);}
@@ -179,6 +185,12 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .h2h-bar{height:6px;border-radius:3px;background:var(--line);margin-top:10px;overflow:hidden;display:flex;}
 .h2h-bar .a{background:var(--accent1);width:0%;transition:width .9s cubic-bezier(.22,1,.36,1);} .h2h-bar .b{background:var(--accent2);flex:1;}
 .chip-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);}
+.transfer-row{padding:8px 0;border-bottom:1px solid var(--line);font-size:11.5px;}
+.transfer-row:last-child{border-bottom:none;}
+.transfer-row .tr-team{font-family:var(--font-d);font-weight:700;font-size:12.5px;margin-bottom:3px;}
+.transfer-move{display:flex;align-items:center;gap:6px;color:var(--muted);}
+.transfer-move .out{color:var(--red);}
+.transfer-move .in{color:var(--green);}
 .chip-row:last-child{border-bottom:none;}
 .chip-row .badge{font-size:16px;}
 .chip-row .who{flex:1;font-size:12.5px;font-weight:600;}
@@ -445,6 +457,13 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
     <div class="section-title"><span class="bar"></span>Doppelgänger</div>
     <div class="kpi-card" id="doppel-card"></div>
 
+    <div class="section-title"><span class="bar"></span>Transfer Activity</div>
+    <div class="kpi-card">
+      <h3>Who moved who this gameweek</h3>
+      <div class="sub" id="transfers-sub">Live — updates as people make moves before the deadline</div>
+      <div id="transfer-activity"></div>
+    </div>
+
     <div class="section-title"><span class="bar"></span>Template vs Differential</div>
     <div class="kpi-card">
       <h3>Most-owned XI across the league</h3>
@@ -556,6 +575,7 @@ function jerseySvg(teamCode, uid){
 // ---------- Real data, loaded from Firestore (written by scripts/sync.js) ----------
 let managers = [];        // [{id, teamName, managerName, totalPoints, history:[{gw,points,totalPoints,benchPoints,transfers,transferCost}]}]
 let playersMeta = {};     // { elementId: {n, pos, team} } — from playersMeta/current
+let managerClubs = {};    // { entryId: clubCode } — each manager's own favourite-club pick, shared so everyone sees each other's badge
 let GW_COUNT = 0;         // current gameweek being tracked (live or finished)
 let IS_FINAL = false;     // false = live/provisional scoring, bonus points not yet confirmed
 let LEAGUE_NAME = "Office FPL";
@@ -563,10 +583,11 @@ let NEXT_DEADLINE = null; // Date or null
 let NEXT_GW = null;
 
 async function loadCoreData(){
-  const [metaSnap, playersSnap, managersSnap] = await Promise.all([
+  const [metaSnap, playersSnap, managersSnap, clubsSnap] = await Promise.all([
     getDoc(doc(db, "leagueMeta/info")),
     getDoc(doc(db, "playersMeta/current")),
     getDocs(collection(db, "managers")),
+    getDocs(collection(db, "managerClubs")),
   ]);
   if(metaSnap.exists()){
     const meta = metaSnap.data();
@@ -577,6 +598,7 @@ async function loadCoreData(){
     NEXT_GW = meta.nextGw || null;
   }
   if(playersSnap.exists()) playersMeta = playersSnap.data().players || {};
+  clubsSnap.docs.forEach(d => { managerClubs[d.id] = d.data().club; });
   managers = managersSnap.docs
     .map(d => {
       const m = d.data();
@@ -739,11 +761,19 @@ function renderOnboardStep(step){
       </div>
     `;
     sheet.querySelectorAll(".club-tile").forEach(tile => {
-      tile.addEventListener("click", () => {
+      tile.addEventListener("click", async () => {
         ident.club = tile.dataset.club;
         localStorage.setItem("fpl_club", ident.club);
         applyClubTheme(ident.club);
         closeOnboarding();
+        // Save this manager's club pick where everyone can see it, so the
+        // standings table can show their real badge instead of initials.
+        const me = managers.find(m => m.teamName === ident.team);
+        if(me){
+          managerClubs[me.id] = ident.club;
+          setDoc(doc(db, `managerClubs/${me.id}`), { club: ident.club }).catch(()=>{});
+          renderStandings(); // reflect it immediately, don't wait for a refresh
+        }
         // This click is a real user gesture, so audio is allowed to play —
         // safe to run the intro (with sound) right from here.
         runIntro(startPlaylist);
@@ -1473,7 +1503,7 @@ function renderStandings(){
     return `
     <div class="row ${i===0?'gold':''}" data-mgr="${m.id}" style="animation-delay:${Math.min(i*0.04,0.5)}s">
       <div class="pos">${i+1}</div>
-      <div class="avatar">${initials(m.teamName)}</div>
+      <div class="avatar ${managerClubs[m.id]?'has-crest':''}">${managerClubs[m.id] ? crestSvg(managerClubs[m.id], 'row'+m.id) : initials(m.teamName)}</div>
       <div class="rinfo"><div class="team">${m.teamName}</div><div class="mgr">${m.managerName}</div></div>
       <div class="rpts"><b>${mainVal}</b><span>${subVal}</span></div>
     </div>`;
@@ -1960,6 +1990,37 @@ async function renderDoppelganger(){
   }
 }
 
+// ---------- Transfer Activity: who moved who this gameweek (updates live pre-deadline) ----------
+async function renderTransferActivity(){
+  const el = document.getElementById("transfer-activity");
+  const sub = document.getElementById("transfers-sub");
+  // Prefer the upcoming gameweek's transfers when there is one pending —
+  // that's the live, still-changeable picture people actually want to see
+  // pre-deadline. Only fall back to the current gw once there's no "next"
+  // to look at (end of season, or the gap right at kickoff).
+  const showNextGw = NEXT_GW && NEXT_GW !== GW_COUNT;
+  const targetGw = showNextGw ? NEXT_GW : GW_COUNT;
+  if(!targetGw){ el.innerHTML = `<div class="sub">No gameweek in progress yet.</div>`; return; }
+  sub.textContent = showNextGw
+    ? `Live — GW${targetGw} squads, still changeable before the deadline`
+    : (IS_FINAL ? `Final transfer moves for GW${targetGw}` : `GW${targetGw} transfers`);
+  const snap = await getDoc(doc(db, `gameweekTransfers/gw${targetGw}`));
+  if(!snap.exists() || !snap.data().entries || Object.keys(snap.data().entries).length===0){
+    el.innerHTML = `<div class="sub">No transfers made yet for GW${targetGw}.</div>`;
+    return;
+  }
+  const entries = Object.values(snap.data().entries);
+  el.innerHTML = entries.map(e => `
+    <div class="transfer-row">
+      <div class="tr-team">${e.teamName}</div>
+      ${e.transfersOut.map((outId,i) => {
+        const inId = e.transfersIn[i];
+        return `<div class="transfer-move"><span class="out">OUT ${playerInfo(outId).n}</span> → <span class="in">IN ${inId!==undefined ? playerInfo(inId).n : '?'}</span></div>`;
+      }).join("")}
+    </div>
+  `).join("");
+}
+
 // ---------- Copy Weekly Recap ----------
 function buildRecapText(){
   if(!GW_COUNT) return null;
@@ -2062,6 +2123,39 @@ async function getGwPlayerPoints(gw){
   gwPlayerPointsCache[gw] = data;
   return data;
 }
+const gwPlayerStatsCache = {};
+async function getGwPlayerStats(gw){
+  if(gwPlayerStatsCache[gw]) return gwPlayerStatsCache[gw];
+  const snap = await getDoc(doc(db, `gwPlayerPoints/gw${gw}`));
+  const data = snap.exists() ? (snap.data().stats || {}) : {};
+  gwPlayerStatsCache[gw] = data;
+  return data;
+}
+// Only ever shows a stat line if it actually happened that week — a 0 in
+// most of these fields just means "didn't happen", not worth cluttering with.
+const STAT_LABELS = [
+  { key: "goals", icon: "⚽", label: "Goals", always: false },
+  { key: "assists", icon: "🎯", label: "Assists", always: false },
+  { key: "cleanSheet", icon: "🧤", label: "Clean Sheet", always: false, bool: true },
+  { key: "saves", icon: "🧤", label: "Saves", always: false },
+  { key: "bonus", icon: "⭐", label: "Bonus", always: false },
+  { key: "penSaved", icon: "🥅", label: "Pen. Saved", always: false },
+  { key: "penMissed", icon: "❌", label: "Pen. Missed", always: false },
+  { key: "ownGoals", icon: "😬", label: "Own Goal", always: false },
+  { key: "goalsConceded", icon: "🥅", label: "Conceded", always: false },
+  { key: "yellowCards", icon: "🟨", label: "Yellow Card", always: false, bool: true },
+  { key: "redCards", icon: "🟥", label: "Red Card", always: false, bool: true },
+];
+function renderStatBreakdown(stats){
+  if(!stats) return `<div class="gwd-nostat">No stats recorded.</div>`;
+  const rows = [`<div class="gwd-stat-row"><span>⏱ Minutes</span><span>${stats.minutes ?? 0}</span></div>`];
+  STAT_LABELS.forEach(s => {
+    const v = stats[s.key];
+    if(!v) return;
+    rows.push(`<div class="gwd-stat-row"><span>${s.icon} ${s.label}</span><span>${s.bool ? '' : v}</span></div>`);
+  });
+  return rows.join("");
+}
 document.getElementById("standings").addEventListener("click", async (e)=>{
   const row = e.target.closest(".row"); if(!row) return;
   const m = managers.find(x=>x.id==row.dataset.mgr);
@@ -2080,7 +2174,11 @@ document.getElementById("standings").addEventListener("click", async (e)=>{
   const lines = [[],[],[],[]];
   squad.starting.forEach(p => { const pos = playerInfo(p.element).pos; lines[posOrder[pos]].push(p); });
   const histEntry = m.history.find(h=>h.gw===gwForSquad);
-  const pitchHtml = lines.map(line => `<div class="pline">${line.map(p=>jerseyCard(p.element, p.pts, p.isCaptain)).join("")}</div>`).join("");
+  // Starting XI: show the actual points earned (captain's multiplier applied).
+  // Bench: show raw points scored, not multiplied — their multiplier is
+  // normally 0 since bench points don't count, and showing "0" for someone
+  // who actually scored would be misleading, not informative.
+  const pitchHtml = lines.map(line => `<div class="pline">${line.map(p=>jerseyCard(p.element, p.pts * (p.multiplier||1), p.isCaptain)).join("")}</div>`).join("");
   const benchHtml = squad.bench.map(p=>jerseyCard(p.element, p.pts, false)).join("");
   openSheet(`
     <div class="squad-header">
@@ -2100,16 +2198,26 @@ document.getElementById("standings").addEventListener("click", async (e)=>{
     document.querySelectorAll(".gw-dropdown").forEach(d=>d.remove());
     const dd = document.createElement("div");
     dd.className = "gw-dropdown";
-    dd.innerHTML = `<div class="gwd-title">${info.n} · by GW</div><div class="gwd-bars">Loading…</div>`;
-    btn.parentElement.appendChild(dd);
-    const weekly = [];
-    for(let gw=1; gw<=GW_COUNT; gw++){
-      const pts = await getGwPlayerPoints(gw);
-      weekly.push(pts[elementId] ?? 0);
+
+    if(mode === "overall"){
+      // Overall view: show the trend across every synced gameweek
+      dd.innerHTML = `<div class="gwd-title">${info.n} · by GW</div><div class="gwd-bars">Loading…</div>`;
+      btn.parentElement.appendChild(dd);
+      const weekly = [];
+      for(let gw=1; gw<=GW_COUNT; gw++){
+        const pts = await getGwPlayerPoints(gw);
+        weekly.push(pts[elementId] ?? 0);
+      }
+      const maxV = Math.max(...weekly, 1);
+      const bars = weekly.map((v,i)=>`<div class="gwd-bar" style="height:${Math.max(v/maxV*30,3)}px"><b>${v}</b><span>${i+1}</span></div>`).join("");
+      dd.querySelector(".gwd-bars").innerHTML = bars;
+    } else {
+      // A specific gameweek: show the full stat breakdown for that week only
+      dd.innerHTML = `<div class="gwd-title">${info.n} · GW${mode}</div><div class="gwd-stats">Loading…</div>`;
+      btn.parentElement.appendChild(dd);
+      const stats = await getGwPlayerStats(mode);
+      dd.querySelector(".gwd-stats").innerHTML = renderStatBreakdown(stats[elementId]);
     }
-    const maxV = Math.max(...weekly, 1);
-    const bars = weekly.map((v,i)=>`<div class="gwd-bar" style="height:${Math.max(v/maxV*30,3)}px"><b>${v}</b><span>${i+1}</span></div>`).join("");
-    dd.querySelector(".gwd-bars").innerHTML = bars;
   });
 });
 
@@ -2129,6 +2237,7 @@ async function boot(){
   renderH2H();
   renderNemesis();
   renderDoppelganger();
+  renderTransferActivity();
   renderChipTimeline();
   renderCaptaincyReport();
   renderTemplateDifferential();
@@ -2166,6 +2275,7 @@ async function boot(){
       renderAll();
       renderHighlights();
       renderPrize();
+      renderTransferActivity(); // this is the whole point pre-deadline — transfers change minute to minute
       if(IS_FINAL) clearInterval(liveRefresh); // fully settled — stop polling
     }, 120000); // every 2 minutes
   }
