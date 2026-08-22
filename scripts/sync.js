@@ -207,6 +207,8 @@ async function main() {
     // live, updating-in-real-time scoring for that GW. Use that when present,
     // and fall back to the confirmed history entry once the GW does show up
     // there (which also just works correctly for every past, finished GW).
+    // `value`/`bank` (team value and money in the bank, in 0.1m units) power
+    // the "Smart Money" team-value-growth insight.
     const liveEntry = picks?.entry_history
       ? {
           gw,
@@ -217,6 +219,8 @@ async function main() {
           benchPoints: picks.entry_history.points_on_bench,
           transfers: picks.entry_history.event_transfers,
           transferCost: picks.entry_history.event_transfers_cost,
+          value: picks.entry_history.value,
+          bank: picks.entry_history.bank,
         }
       : null;
     const confirmedHistory = history.current
@@ -230,6 +234,8 @@ async function main() {
         benchPoints: h.points_on_bench,
         transfers: h.event_transfers,
         transferCost: h.event_transfers_cost,
+        value: h.value,
+        bank: h.bank,
       }));
     const fullHistory = (liveEntry ? [...confirmedHistory, liveEntry] : confirmedHistory)
       .sort((a, b) => a.gw - b.gw);
