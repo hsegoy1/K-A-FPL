@@ -29,6 +29,14 @@ service cloud.firestore {
       allow write: if request.resource.data.keys().hasOnly(['fire', 'skull', 'cry']);
     }
 
+    // Each manager's own favourite-club pick (for showing club badges instead
+    // of initials in the standings) — written by that person during
+    // onboarding, only the one known field can be touched.
+    match /managerClubs/{doc} {
+      allow read: if true;
+      allow write: if request.resource.data.keys().hasOnly(['club']);
+    }
+
     // Everything else (standings, gameweek stats, players, squads) is written
     // only by the sync script via the Admin SDK, which bypasses these rules
     // entirely — so no client writes are allowed here.
