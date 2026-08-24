@@ -1304,17 +1304,19 @@ const SFX_DURATIONS = { muppet: 1200, form: 500, bigbrain: 300, default: 200 };
 let activeSfxAudio = null;
 let activeSfxOscillators = [];
 function stopActiveSfx(){
+  const hadActiveSfx = !!(activeSfxAudio || activeSfxOscillators.length > 0);
   if(activeSfxAudio){
     activeSfxAudio.pause();
     activeSfxAudio = null;
   }
   activeSfxOscillators.forEach(osc => { try{ osc.stop(); }catch(e){} });
   activeSfxOscillators = [];
-  // Restore the playlist volume right away too — for a custom-uploaded clip,
-  // the restore normally happens on its "ended" event, which never fires if
-  // we just cut it off early, so without this the music would stay ducked
-  // at near-silence indefinitely.
-  if(currentAudioEl && !musicPaused) fadeAudioVolume(currentAudioEl, currentTargetVolume(), 200);
+  // Only restore volume if something was actually stopped early — otherwise
+  // this fires on every single award tap (playAwardSfx calls this
+  // defensively first, in case a previous sound is still going), racing
+  // against the duck-down fade that's about to start right after it and
+  // cancelling it out, which is exactly what caused the mixing bug.
+  if(hadActiveSfx && currentAudioEl && !musicPaused) fadeAudioVolume(currentAudioEl, currentTargetVolume(), 200);
 }
 // Plays the roast SFX for an award, ducking the playlist for the duration and
 // restoring it afterward. Returns nothing — this is the one call site to use.
