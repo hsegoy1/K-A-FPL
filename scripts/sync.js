@@ -67,6 +67,7 @@ async function main() {
       n: p.web_name,
       pos: POSITION_MAP[p.element_type] || "MID",
       team: teamsById.get(p.team) || "UNK",
+      price: p.now_cost, // 0.1m units — e.g. 60 = £6.0m
     };
   }
   await db.doc("playersMeta/current").set({
