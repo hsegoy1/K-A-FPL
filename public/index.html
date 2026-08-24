@@ -28,7 +28,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;
   transition: background 1.2s ease;
 }
 #club-bg-layer{position:fixed;inset:0;z-index:-1;background-size:cover;background-position:center;opacity:0;transition:opacity 1s ease;pointer-events:none;}
-#club-bg-layer.show{opacity:.48;}
+#club-bg-layer.show{opacity:.46;}
 #club-bg-layer::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg, rgba(13,7,21,.4), var(--bg) 92%);}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important;}}
 
@@ -232,7 +232,7 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .pv-split .pv-header-info{padding:8px 8px 4px;flex-direction:column;align-items:flex-start;gap:2px;}
 .pv-split .pv-header-info .nm{font-size:11.5px;}
 
-.pitch-stage{padding:6px 10px 20px;}
+.pitch-stage{padding:6px 10px 8px;}
 .pitch-wrap{position:relative;border-radius:14px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.6);}
 .pitch-svg{display:block;width:100%;height:auto;}
 .pv-zone{position:absolute;left:0;right:0;display:flex;justify-content:space-around;align-items:flex-start;padding:0 3%;flex-wrap:wrap;row-gap:10px;}
@@ -257,12 +257,12 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .goal-net{position:absolute;top:6%;left:3%;right:3%;bottom:0;background-image:repeating-linear-gradient(115deg, rgba(255,255,255,.5) 0 1px, transparent 1px 9px),repeating-linear-gradient(65deg, rgba(255,255,255,.5) 0 1px, transparent 1px 9px);transform:rotateX(58deg) translateZ(-14px);transform-origin:top;opacity:.55;}
 .goal-shadow{position:absolute;bottom:-6px;left:8%;right:8%;height:14px;background:radial-gradient(ellipse, rgba(0,0,0,.5), transparent 70%);filter:blur(3px);}
 
-.stand-wrap{position:relative;padding:18px 0 26px;background:linear-gradient(180deg, #0a0612, #0D0715);perspective:600px;overflow:hidden;}
+.stand-wrap{position:relative;padding:10px 0 12px;background:linear-gradient(180deg, #0a0612, #0D0715);perspective:600px;overflow:hidden;}
 .stand-title{text-align:center;font-family:var(--font-m);font-size:10px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;margin-bottom:10px;}
 .stand-tiers{transform-style:preserve-3d;}
 .stand-row{display:flex;justify-content:center;gap:3px;margin-bottom:3px;transform-style:preserve-3d;}
 .pv-seat{width:7px;height:7px;border-radius:2px 2px 0 0;flex-shrink:0;}
-.bench-front-row{display:flex;justify-content:center;gap:16px;margin-top:14px;position:relative;z-index:2;flex-wrap:wrap;}
+.bench-front-row{display:flex;justify-content:center;gap:16px;margin-top:6px;position:relative;z-index:2;flex-wrap:wrap;}
 .bench-seat{display:flex;flex-direction:column;align-items:center;gap:3px;}
 .bench-seat-back{width:40px;height:26px;border-radius:8px 8px 3px 3px;background:linear-gradient(180deg, #2a1a42, #1a1028);border:1px solid var(--line);display:flex;align-items:flex-end;justify-content:center;padding-bottom:2px;box-shadow:0 6px 14px rgba(0,0,0,.5), inset 0 -3px 6px rgba(0,0,0,.3);}
 .bench-seat .pv-jersey svg{width:26px;height:28px;}
@@ -2820,25 +2820,25 @@ function renderStatBreakdown(stats, pos){
 }
 // ================= Full-screen Pitch View =================
 function pitchMarkingsSvg(){
-  return `<svg class="pitch-svg" viewBox="0 0 400 700" xmlns="http://www.w3.org/2000/svg">
+  return `<svg class="pitch-svg" viewBox="0 0 400 540" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <linearGradient id="grass" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stop-color="#0F3D22"/><stop offset="100%" stop-color="#0A2E19"/>
       </linearGradient>
     </defs>
-    <rect width="400" height="700" fill="url(#grass)"/>
-    ${Array.from({length:10},(_,i)=>`<rect x="${i*40}" y="0" width="40" height="700" fill="${i%2===0?'rgba(255,255,255,.025)':'transparent'}"/>`).join("")}
+    <rect width="400" height="540" fill="url(#grass)"/>
+    ${Array.from({length:10},(_,i)=>`<rect x="${i*40}" y="0" width="40" height="540" fill="${i%2===0?'rgba(255,255,255,.025)':'transparent'}"/>`).join("")}
     <g stroke="rgba(255,255,255,.55)" stroke-width="2" fill="none">
-      <rect x="14" y="14" width="372" height="672" rx="4"/>
-      <rect x="140" y="14" width="120" height="42"/>
-      <rect x="80" y="14" width="240" height="118"/>
-      <path d="M 145 132 A 55 55 0 0 0 255 132" />
-      <circle cx="200" cy="132" r="2.5" fill="rgba(255,255,255,.55)"/>
-      <line x1="14" y1="360" x2="386" y2="360" />
-      <circle cx="200" cy="360" r="62" />
-      <circle cx="200" cy="360" r="2.5" fill="rgba(255,255,255,.55)"/>
-      <path d="M 14 672 A 14 14 0 0 0 28 686" />
-      <path d="M 386 672 A 14 14 0 0 1 372 686" />
+      <rect x="14" y="11" width="372" height="518" rx="4"/>
+      <rect x="140" y="11" width="120" height="32"/>
+      <rect x="80" y="11" width="240" height="91"/>
+      <path d="M 145 102 A 42 42 0 0 0 255 102" />
+      <circle cx="200" cy="102" r="2.5" fill="rgba(255,255,255,.55)"/>
+      <line x1="14" y1="278" x2="386" y2="278" />
+      <circle cx="200" cy="278" r="48" />
+      <circle cx="200" cy="278" r="2.5" fill="rgba(255,255,255,.55)"/>
+      <path d="M 14 518 A 14 14 0 0 0 28 529" />
+      <path d="M 386 518 A 14 14 0 0 1 372 529" />
     </g>
   </svg>`;
 }
@@ -2905,7 +2905,7 @@ async function renderPitchStage(manager, gw, isSplit){
     </div>
     <div class="stand-wrap">
       <div class="stand-title">Bench</div>
-      ${renderStadiumTiers(4, isSplit?9:14)}
+      ${renderStadiumTiers(2, isSplit?9:14)}
       <div class="bench-front-row">${squad.bench.map(p=>`<div class="bench-seat"><div class="bench-seat-back">${renderPvJersey(p.element, p.pts, false)}</div></div>`).join("")}</div>
     </div>
   `;
