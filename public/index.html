@@ -28,7 +28,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;
   transition: background 1.2s ease;
 }
 #club-bg-layer{position:fixed;inset:0;z-index:-1;background-size:cover;background-position:center;opacity:0;transition:opacity 1s ease;pointer-events:none;}
-#club-bg-layer.show{opacity:.46;}
+#club-bg-layer.show{opacity:.48;}
 #club-bg-layer::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg, rgba(13,7,21,.4), var(--bg) 92%);}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important;}}
 
@@ -94,8 +94,6 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
   .pv-split .pv-jersey svg{width:46px;height:50px;}
   .pv-split .pv-jersey .pn{font-size:11.5px;max-width:72px;}
   .pv-split .pv-jersey .pp{font-size:14.5px;}
-  .bench-seat-back{width:52px;height:34px;}
-  .bench-seat .pv-jersey svg{width:34px;height:37px;}
   .stand-title{font-size:12px;}
   .player-popup{width:340px;}
   .pp-name{font-size:19px;}
@@ -262,12 +260,8 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .stand-tiers{transform-style:preserve-3d;}
 .stand-row{display:flex;justify-content:center;gap:3px;margin-bottom:3px;transform-style:preserve-3d;}
 .pv-seat{width:7px;height:7px;border-radius:2px 2px 0 0;flex-shrink:0;}
-.bench-front-row{display:flex;justify-content:center;gap:16px;margin-top:6px;position:relative;z-index:2;flex-wrap:wrap;}
-.bench-seat{display:flex;flex-direction:column;align-items:center;gap:3px;}
-.bench-seat-back{width:40px;height:26px;border-radius:8px 8px 3px 3px;background:linear-gradient(180deg, #2a1a42, #1a1028);border:1px solid var(--line);display:flex;align-items:flex-end;justify-content:center;padding-bottom:2px;box-shadow:0 6px 14px rgba(0,0,0,.5), inset 0 -3px 6px rgba(0,0,0,.3);}
-.bench-seat .pv-jersey svg{width:26px;height:28px;}
-.bench-seat .pn{font-size:7px;}
-.bench-seat .pp{font-size:8.5px;}
+.bench-front-row{display:flex;justify-content:center;gap:26px;row-gap:16px;margin-top:8px;position:relative;z-index:2;flex-wrap:wrap;}
+.bench-seat{display:flex;flex-direction:column;align-items:center;}
 
 /* ---------- Compare picker sheet ---------- */
 .compare-overlay{position:fixed;inset:0;z-index:95;background:rgba(5,3,8,.8);display:flex;align-items:flex-end;justify-content:center;}
@@ -2906,7 +2900,7 @@ async function renderPitchStage(manager, gw, isSplit){
     <div class="stand-wrap">
       <div class="stand-title">Bench</div>
       ${renderStadiumTiers(2, isSplit?9:14)}
-      <div class="bench-front-row">${squad.bench.map(p=>`<div class="bench-seat"><div class="bench-seat-back">${renderPvJersey(p.element, p.pts, false)}</div></div>`).join("")}</div>
+      <div class="bench-front-row">${squad.bench.map(p=>`<div class="bench-seat">${renderPvJersey(p.element, p.pts, false)}</div>`).join("")}</div>
     </div>
   `;
 }
