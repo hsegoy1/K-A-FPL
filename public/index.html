@@ -28,7 +28,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;
   transition: background 1.2s ease;
 }
 #club-bg-layer{position:fixed;inset:0;z-index:-1;background-size:cover;background-position:center;opacity:0;transition:opacity 1s ease;pointer-events:none;}
-#club-bg-layer.show{opacity:.28;}
+#club-bg-layer.show{opacity:.34;}
 #club-bg-layer::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg, rgba(13,7,21,.4), var(--bg) 92%);}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important;}}
 
@@ -243,6 +243,15 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .compare-opt:active{background:rgba(255,255,255,.06);}
 .compare-opt .av{width:30px;height:30px;border-radius:8px;background:var(--grad);display:flex;align-items:center;justify-content:center;font-family:var(--font-d);font-weight:700;font-size:11px;color:#0D0715;flex-shrink:0;}
 
+/* ---------- Player stat popup — a compact card that grows from the tapped jersey, not a full sheet ---------- */
+.player-popup-backdrop{position:fixed;inset:0;z-index:149;display:none;}
+.player-popup-backdrop.show{display:block;}
+.player-popup{position:fixed;width:210px;background:#0D0715;border:1px solid var(--accent1);border-radius:14px;padding:12px 14px;z-index:150;box-shadow:0 16px 36px rgba(0,0,0,.6);opacity:0;transform:scale(.25);transition:transform .25s cubic-bezier(.34,1.56,.64,1), opacity .18s ease;pointer-events:none;}
+.player-popup.show{opacity:1;transform:scale(1);pointer-events:auto;}
+.player-popup .pp-close{position:absolute;top:6px;right:9px;color:var(--muted);font-size:13px;cursor:pointer;}
+.player-popup .pp-name{font-family:var(--font-d);font-weight:700;font-size:13px;margin-bottom:1px;padding-right:16px;}
+.player-popup .pp-sub{font-size:10px;color:var(--muted);margin-bottom:8px;}
+
 .prize-hero{background:var(--panel-glass);backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);border:1px solid var(--line);border-radius:16px;padding:18px;text-align:center;margin-bottom:14px;}
 .prize-hero .amount{font-family:var(--font-d);font-size:30px;font-weight:800;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;}
 .prize-hero .sub{font-size:12px;color:var(--muted);margin-top:2px;}
@@ -395,9 +404,9 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .tab .ic{font-size:18px;}
 .tab.active{color:var(--accent2);}
 
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:60;display:none;}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:160;display:none;}
 .overlay.show{display:block;}
-.sheet{position:fixed;left:0;right:0;bottom:0;max-height:88vh;overflow-y:auto;background:var(--bg);border-radius:20px 20px 0 0;padding:18px 16px 24px;z-index:61;transform:translateY(100%);transition:transform .28s ease;border-top:1px solid var(--line);}
+.sheet{position:fixed;left:0;right:0;bottom:0;max-height:88vh;overflow-y:auto;background:var(--bg);border-radius:20px 20px 0 0;padding:18px 16px 24px;z-index:161;transform:translateY(100%);transition:transform .28s ease;border-top:1px solid var(--line);}
 .sheet.show{transform:translateY(0);}
 .sheet-handle{width:36px;height:4px;background:var(--line);border-radius:2px;margin:0 auto 14px;}
 .close-btn{position:absolute;top:14px;right:16px;background:var(--panel-glass);backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);border:1px solid var(--line);color:var(--text);width:28px;height:28px;border-radius:50%;font-size:14px;cursor:pointer;}
@@ -533,6 +542,14 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
     <h3>Compare against…</h3>
     <div id="compare-list"></div>
   </div>
+</div>
+
+<div class="player-popup-backdrop" id="player-popup-backdrop"></div>
+<div class="player-popup" id="player-popup">
+  <div class="pp-close" id="pp-close">✕</div>
+  <div class="pp-name" id="pp-name"></div>
+  <div class="pp-sub" id="pp-sub"></div>
+  <div id="pp-stats"></div>
 </div>
 
 <div class="hero">
@@ -2891,13 +2908,55 @@ document.getElementById("compare-overlay").addEventListener("click", (e) => {
 // breakdown for the currently-selected gameweek, via the existing bottom
 // sheet — routing through a fixed-position sheet instead of an inline
 // popup avoids clipping against the pitch's rounded-corner overflow:hidden.
+// ---------- Player stat popup: grows from the tapped jersey's actual screen
+// position (not nested inside the pitch, so it isn't clipped by the pitch's
+// rounded-corner overflow:hidden), shows just the compact breakdown ----------
+function positionPlayerPopup(jerseyEl){
+  const popup = document.getElementById("player-popup");
+  const rect = jerseyEl.getBoundingClientRect();
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const pw = 210;
+  let left = rect.left + rect.width/2 - pw/2;
+  left = Math.max(10, Math.min(left, vw - pw - 10));
+  const spaceAbove = rect.top;
+  let originY;
+  if(spaceAbove > 200){
+    popup.style.left = left + "px";
+    popup.style.bottom = (vh - rect.top + 10) + "px";
+    popup.style.top = "auto";
+    originY = "bottom";
+  } else {
+    popup.style.left = left + "px";
+    popup.style.top = (rect.bottom + 10) + "px";
+    popup.style.bottom = "auto";
+    originY = "top";
+  }
+  const originX = Math.max(0, Math.min(100, (rect.left + rect.width/2 - left) / pw * 100));
+  popup.style.transformOrigin = `${originX}% ${originY}`;
+}
+async function openPlayerPopup(jerseyEl, elementId, gw){
+  const info = playerInfo(elementId);
+  document.getElementById("pp-name").textContent = info.n;
+  document.getElementById("pp-sub").textContent = `GW${gw} breakdown`;
+  document.getElementById("pp-stats").innerHTML = `<div class="gwd-nostat">Loading…</div>`;
+  positionPlayerPopup(jerseyEl);
+  document.getElementById("player-popup-backdrop").classList.add("show");
+  document.getElementById("player-popup").classList.add("show");
+  const stats = await getGwPlayerStats(gw);
+  document.getElementById("pp-stats").innerHTML = renderStatBreakdown(stats[elementId]);
+}
+function closePlayerPopup(){
+  document.getElementById("player-popup").classList.remove("show");
+  document.getElementById("player-popup-backdrop").classList.remove("show");
+}
+document.getElementById("pp-close").addEventListener("click", closePlayerPopup);
+document.getElementById("player-popup-backdrop").addEventListener("click", closePlayerPopup);
+document.getElementById("pv-body").addEventListener("scroll", closePlayerPopup);
+
 document.getElementById("pv-body").addEventListener("click", async (e) => {
   const jersey = e.target.closest(".pv-jersey"); if(!jersey) return;
   const elementId = jersey.dataset.element;
-  const info = playerInfo(elementId);
-  openSheet(`<div class="squad-header"><div style="font-size:22px">⚽</div><div><h2>${info.n}</h2><p>GW${pvCurrentGw} breakdown</p></div></div><div id="pv-player-stats" class="gwd-stats">Loading…</div>`);
-  const stats = await getGwPlayerStats(pvCurrentGw);
-  document.getElementById("pv-player-stats").innerHTML = renderStatBreakdown(stats[elementId]);
+  await openPlayerPopup(jersey, elementId, pvCurrentGw);
 });
 
 document.getElementById("standings").addEventListener("click", async (e)=>{
