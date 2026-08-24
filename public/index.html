@@ -102,10 +102,11 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .table-col-standings.compact .row{padding:8px 9px;gap:7px;border-radius:10px;margin-bottom:5px;}
 .table-col-standings.compact .avatar{width:26px;height:26px;border-radius:7px;font-size:11px;}
 .table-col-standings.compact .rinfo .team{font-size:12.5px;}
-.table-col-standings.compact .rinfo .mgr{display:none;}
+.table-col-standings.compact .rinfo .mgr{font-size:9.5px;}
 .table-col-standings.compact .rpts b{font-size:13.5px;}
 .table-col-standings.compact .rpts span{font-size:10px;}
 .col-title{font-family:var(--font-m);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:10px 10px 6px;}
+.fx-date-header{font-family:var(--font-m);font-size:9.5px;letter-spacing:.04em;color:var(--muted);background:rgba(255,255,255,.03);padding:6px 10px;border-bottom:1px solid var(--line);}
 .fixture-row{display:flex;align-items:center;gap:6px;padding:10px 8px;border-bottom:1px solid var(--line);cursor:pointer;}
 .fixture-row:last-child{border-bottom:none;}
 .fixture-row:active{background:rgba(255,255,255,.04);}
@@ -1769,18 +1770,28 @@ async function renderFixtures(gw){
     return;
   }
   let fUid = 0;
-  el.innerHTML = fixtures.map((f,i) => {
+  let lastDateKey = null;
+  const rows = [];
+  fixtures.forEach((f,i) => {
     fUid++;
+    const kickoffDate = new Date(f.kickoff);
+    const dateKey = fmtNPT(kickoffDate, {year:'numeric', month:'numeric', day:'numeric'});
+    if(dateKey !== lastDateKey){
+      lastDateKey = dateKey;
+      const label = fmtNPT(kickoffDate, {month:'short', day:'numeric', weekday:'long'}); // "Aug 23 Sunday"
+      rows.push(`<div class="fx-date-header">${label}</div>`);
+    }
     const mid = f.finished
       ? `${f.homeScore} - ${f.awayScore}`
-      : fmtNPT(new Date(f.kickoff), {hour:'numeric', minute:'2-digit'});
-    return `
+      : fmtNPT(kickoffDate, {hour:'numeric', minute:'2-digit'});
+    rows.push(`
     <div class="fixture-row" data-idx="${i}">
       <div class="fx-team home"><div class="fx-badge">${crestSvg(f.home, 'fxh'+fUid)}</div><span class="code">${f.home}</span></div>
       <div class="fx-mid ${f.finished?'':'upcoming'}">${mid}</div>
       <div class="fx-team away"><div class="fx-badge">${crestSvg(f.away, 'fxa'+fUid)}</div><span class="code">${f.away}</span></div>
-    </div>`;
-  }).join("");
+    </div>`);
+  });
+  el.innerHTML = rows.join("");
   el.querySelectorAll(".fixture-row").forEach(row => {
     row.addEventListener("click", () => openMatchDetail(fixtures[parseInt(row.dataset.idx)]));
   });
