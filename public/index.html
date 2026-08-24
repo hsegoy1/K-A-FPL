@@ -28,7 +28,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;
   transition: background 1.2s ease;
 }
 #club-bg-layer{position:fixed;inset:0;z-index:-1;background-size:cover;background-position:center;opacity:0;transition:opacity 1s ease;pointer-events:none;}
-#club-bg-layer.show{opacity:.48;}
+#club-bg-layer.show{opacity:.34;}
 #club-bg-layer::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg, rgba(13,7,21,.4), var(--bg) 92%);}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important;}}
 
@@ -501,13 +501,6 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 @keyframes shineSweep{0%{opacity:1;background-position:-120% -120%;}100%{opacity:0;background-position:120% 120%;}}
 .intro-skip{position:absolute;bottom:24px;right:24px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);border-radius:10px;padding:8px 14px;font-family:var(--font-m);font-size:11px;cursor:pointer;z-index:5;}
 
-/* ---------- Tap-to-enter gate (returning visitors — browsers block audio until a real tap happens) ---------- */
-.tap-gate{position:fixed;inset:0;z-index:130;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;cursor:pointer;}
-.tap-gate.hidden{display:none;}
-.tap-gate .tg-title{font-family:var(--font-d);font-size:20px;font-weight:700;}
-.tap-gate .tg-btn{background:var(--grad);color:#0D0715;border:none;border-radius:14px;padding:14px 28px;font-family:var(--font-d);font-weight:700;font-size:14px;animation:tapPulse 1.6s ease-in-out infinite;}
-@keyframes tapPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.05);}}
-
 /* ---------- Toast ---------- */
 .toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(20px);background:rgba(23,15,38,.85);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:11px 16px;font-size:12.5px;z-index:90;opacity:0;transition:all .35s cubic-bezier(.22,1,.36,1);max-width:88vw;text-align:center;pointer-events:none;}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
@@ -555,11 +548,6 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
     <div class="intro-shine" id="intro-shine"></div>
   </div>
   <button class="intro-skip" id="intro-skip">Skip →</button>
-</div>
-
-<div class="tap-gate hidden" id="tap-gate">
-  <div class="tg-title">K&A Paid FPL</div>
-  <button class="tg-btn" id="tap-gate-btn">▶ Tap to Enter</button>
 </div>
 
 <div class="pitch-overlay hidden" id="pitch-overlay">
@@ -2585,13 +2573,13 @@ async function renderCaptaincyDetailBody(m, rows){
       <div class="cap-h2h">
         <div class="side ${capWon?'win':''}">
           <div class="lbl">You captained</div>
-          ${jerseySvg(cap.team, 'capdet1')}
+          <div class="pv-jersey">${jerseySvg(cap.team, 'capdet1')}</div>
           <div class="nm2">${cap.n}</div>
           <div class="sc">${r.capPts}</div>
         </div>
         <div class="side ${!capWon?'win':''}">
           <div class="lbl">Best in your squad</div>
-          ${jerseySvg(alt.team, 'capdet2')}
+          <div class="pv-jersey">${jerseySvg(alt.team, 'capdet2')}</div>
           <div class="nm2">${alt.n}</div>
           <div class="sc">${r.altPts}</div>
         </div>
@@ -3045,31 +3033,46 @@ document.getElementById("standings").addEventListener("click", async (e)=>{
 
 function renderAll(){ renderHeroStats(); renderStandings(); }
 
+// One bad render must never be able to take the rest of the page down with
+// it — wrap every independent section so a failure in one (bad data for a
+// single manager, an edge case we didn't anticipate) can't silently prevent
+// everything queued after it from ever running.
+function safeRender(fn, label){
+  try {
+    const result = fn();
+    if(result && typeof result.catch === "function"){
+      result.catch(err => console.error(`Render failed: ${label}`, err));
+    }
+  } catch(err) {
+    console.error(`Render failed: ${label}`, err);
+  }
+}
+
 async function boot(){
   await loadCoreData();
   await loadAdminData();
 
-  renderLeagueHeader();
-  renderModeSelect();
-  renderAll();
-  renderAwards();
-  renderPrize();
-  renderMomentum();
-  renderFormGuide();
-  renderConsistencyCard();
-  renderBenchRegret();
-  renderSmartMoney();
-  renderTransferVerdict();
-  renderFormationTrends();
-  renderLeadChanges();
-  renderH2H();
-  renderNemesis();
-  renderDoppelganger();
-  renderTransferActivity();
-  renderChipTimeline();
-  renderCaptaincyReport();
-  renderTemplateDifferential();
-  renderHighlights();
+  safeRender(renderLeagueHeader, "renderLeagueHeader");
+  safeRender(renderModeSelect, "renderModeSelect");
+  safeRender(renderAll, "renderAll");
+  safeRender(renderAwards, "renderAwards");
+  safeRender(renderPrize, "renderPrize");
+  safeRender(renderMomentum, "renderMomentum");
+  safeRender(renderFormGuide, "renderFormGuide");
+  safeRender(renderConsistencyCard, "renderConsistencyCard");
+  safeRender(renderBenchRegret, "renderBenchRegret");
+  safeRender(renderSmartMoney, "renderSmartMoney");
+  safeRender(renderTransferVerdict, "renderTransferVerdict");
+  safeRender(renderFormationTrends, "renderFormationTrends");
+  safeRender(renderLeadChanges, "renderLeadChanges");
+  safeRender(renderH2H, "renderH2H");
+  safeRender(renderNemesis, "renderNemesis");
+  safeRender(renderDoppelganger, "renderDoppelganger");
+  safeRender(renderTransferActivity, "renderTransferActivity");
+  safeRender(renderChipTimeline, "renderChipTimeline");
+  safeRender(renderCaptaincyReport, "renderCaptaincyReport");
+  safeRender(renderTemplateDifferential, "renderTemplateDifferential");
+  safeRender(renderHighlights, "renderHighlights");
 
   renderDeadline();
   setInterval(renderDeadline, 1000);
@@ -3092,16 +3095,27 @@ async function boot(){
       setDoc(doc(db, `managerClubs/${me.id}`), { club: ident.club }).catch(()=>{});
       renderStandings();
     }
-    // Returning visitor: no click has happened yet this page load, and
-    // browsers block audio until one does — so gate the intro behind a tap
-    // instead of trying to autoplay it.
-    const gate = document.getElementById("tap-gate");
-    gate.classList.remove("hidden");
-    document.getElementById("tap-gate-btn").addEventListener("click", () => {
-      gate.classList.add("hidden");
-      runIntro(startPlaylist);
-    }, { once: true });
+    // Returning visitor: play the intro immediately, every time — the visual
+    // isn't blocked by anything, and any audio that gets blocked by the
+    // browser's autoplay rule will simply catch up silently on whatever the
+    // person does first (see the first-interaction listener below), instead
+    // of gating the whole animation behind a screen people might not
+    // realize they need to tap.
+    runIntro(startPlaylist);
   }
+
+  // The moment the person does ANYTHING at all on the page, retry any audio
+  // that got silently blocked by the browser's autoplay policy — this is
+  // what lets the intro/playlist play immediately for everyone without a
+  // dedicated "tap to enter" gate that's easy to miss.
+  const unlockAudioOnFirstInteraction = () => {
+    if(audioCtx && audioCtx.state === "suspended") audioCtx.resume().catch(()=>{});
+    if(currentAudioEl && currentAudioEl.paused) currentAudioEl.play().catch(()=>{});
+    document.removeEventListener("click", unlockAudioOnFirstInteraction);
+    document.removeEventListener("touchstart", unlockAudioOnFirstInteraction);
+  };
+  document.addEventListener("click", unlockAudioOnFirstInteraction, { once: true });
+  document.addEventListener("touchstart", unlockAudioOnFirstInteraction, { once: true });
 
   // While a gameweek is live (not yet final), quietly re-pull standings every
   // couple of minutes so people watching during a match don't have to keep
@@ -3109,11 +3123,11 @@ async function boot(){
   if(GW_COUNT && !IS_FINAL){
     const liveRefresh = setInterval(async () => {
       await loadCoreData();
-      renderLeagueHeader();
-      renderAll();
-      renderHighlights();
-      renderPrize();
-      renderTransferActivity(); // this is the whole point pre-deadline — transfers change minute to minute
+      safeRender(renderLeagueHeader, "renderLeagueHeader (live refresh)");
+      safeRender(renderAll, "renderAll (live refresh)");
+      safeRender(renderHighlights, "renderHighlights (live refresh)");
+      safeRender(renderPrize, "renderPrize (live refresh)");
+      safeRender(renderTransferActivity, "renderTransferActivity (live refresh)"); // this is the whole point pre-deadline — transfers change minute to minute
       if(IS_FINAL) clearInterval(liveRefresh); // fully settled — stop polling
     }, 120000); // every 2 minutes
   }
