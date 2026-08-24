@@ -124,7 +124,11 @@ async function main() {
   // stored — the frontend already has playersMeta for that lookup.
   async function syncFixturesForGw(targetGw) {
     if (!targetGw) return;
-    const fixtures = await getJson(`${FPL_BASE}/fixtures/?event=${targetGw}`).catch(() => []);
+    const fixtures = await getJson(`${FPL_BASE}/fixtures/?event=${targetGw}`).catch((err) => {
+      console.log(`⚠️  Fixtures fetch FAILED for GW${targetGw}: ${err.message}`);
+      return null;
+    });
+    if (fixtures === null) return; // fetch itself failed — leave whatever was there before untouched
     const compact = fixtures.map((f) => ({
       id: f.id,
       home: teamsById.get(f.team_h) || "UNK",
@@ -143,9 +147,17 @@ async function main() {
       fixtures: compact,
       syncedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
+    const finishedCount = compact.filter((f) => f.finished).length;
+    console.log(`Fixtures GW${targetGw}: ${compact.length} matches synced, ${finishedCount} finished with a score`);
   }
   await syncFixturesForGw(gw);
   if (nextEvent && nextEvent.id !== gw) await syncFixturesForGw(nextEvent.id);
+  // Also refresh the previous gameweek — a safety net for the exact moment
+  // the season transitions to a new "current" GW: without this, whichever
+  // gameweek just got superseded would freeze in whatever state it was last
+  // synced in, even if some of its matches were still mid-confirmation
+  // (bonus points not yet locked in) at that exact moment.
+  if (gw && gw > 1) await syncFixturesForGw(gw - 1);
 
   // 2. League standings (classic league, single page is enough for <50 managers)
   const standings = await getJson(
