@@ -37,6 +37,14 @@ service cloud.firestore {
       allow write: if request.resource.data.keys().hasOnly(['club']);
     }
 
+    // Visit log (one doc per manager per day) — written by each person's own
+    // browser once per session, so admin can see engagement. Only the known
+    // fields can be touched, same pattern as everywhere else.
+    match /accessLog/{doc} {
+      allow read: if true;
+      allow write: if request.resource.data.keys().hasOnly(['entryId', 'teamName', 'date', 'count']);
+    }
+
     // Everything else (standings, gameweek stats, players, squads) is written
     // only by the sync script via the Admin SDK, which bypasses these rules
     // entirely — so no client writes are allowed here.
