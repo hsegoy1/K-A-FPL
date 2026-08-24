@@ -134,7 +134,13 @@ async function main() {
       home: teamsById.get(f.team_h) || "UNK",
       away: teamsById.get(f.team_a) || "UNK",
       kickoff: f.kickoff_time,
-      finished: f.finished,
+      // FPL has two different "finished" flags: `finished` only flips true
+      // once the result is fully, officially confirmed (can take a long
+      // time) — `finished_provisional` flips true the moment the match
+      // itself ends, with a real score and full stats already available.
+      // We want the second one for "does this match have a result to show".
+      finished: f.finished_provisional,
+      official: f.finished, // kept so the frontend can show a small "provisional" tag
       homeScore: f.team_h_score,
       awayScore: f.team_a_score,
       stats: (f.stats || []).reduce((acc, s) => {
@@ -328,9 +334,9 @@ async function main() {
         managerName: m.player_name,
         teamName: m.entry_name,
         gwPoints: thisGw.points,
-        benchPoints: thisGw.points_on_bench,
-        transfers: thisGw.event_transfers,
-        transferCost: thisGw.event_transfers_cost,
+        benchPoints: thisGw.benchPoints ?? 0,
+        transfers: thisGw.transfers ?? 0,
+        transferCost: thisGw.transferCost ?? 0,
         captainName,
       });
     }
