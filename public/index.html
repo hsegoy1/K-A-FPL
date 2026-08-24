@@ -30,7 +30,15 @@ body::before{content:'';position:fixed;inset:0;z-index:-2;
 #club-bg-layer{position:fixed;inset:0;z-index:-1;background-size:cover;background-position:center;opacity:0;transition:opacity 1s ease;pointer-events:none;}
 #club-bg-layer.show{opacity:.34;}
 #club-bg-layer::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg, rgba(13,7,21,.4), var(--bg) 92%);}
-@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important;}}
+/* Reduced-motion accessibility: keep it fast/instant rather than disabling
+   animations outright — several elements (standings rows, insight cards,
+   the intro badge) start hidden and rely on their animation's "forwards"
+   fill-mode to actually reach their visible end state. A blanket
+   animation:none leaves those stuck invisible forever instead of just
+   skipping the motion, which is a real bug, not just a preference. */
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:0.01ms!important;animation-delay:0ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important;scroll-behavior:auto!important;}
+}
 
 /* ---------- Glass utility ---------- */
 .glass{background:rgba(23,15,38,.5);backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);border:1px solid rgba(255,255,255,.09);box-shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 8px 24px rgba(0,0,0,.35);}
@@ -452,7 +460,7 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 /* ---------- Onboarding ---------- */
 .onboard-overlay{position:fixed;inset:0;z-index:100;display:flex;align-items:flex-end;justify-content:center;background:rgba(5,2,10,.75);backdrop-filter:blur(6px);}
 .onboard-overlay.hidden{display:none;}
-.onboard-sheet{width:100%;max-width:480px;background:rgba(23,15,38,.7);backdrop-filter:blur(24px) saturate(150%);-webkit-backdrop-filter:blur(24px) saturate(150%);border:1px solid rgba(255,255,255,.1);border-radius:24px 24px 0 0;padding:22px 18px 30px;max-height:88vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(0,0,0,.5);}
+.onboard-sheet{position:relative;width:100%;max-width:480px;background:rgba(23,15,38,.7);backdrop-filter:blur(24px) saturate(150%);-webkit-backdrop-filter:blur(24px) saturate(150%);border:1px solid rgba(255,255,255,.1);border-radius:24px 24px 0 0;padding:22px 18px 30px;max-height:88vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(0,0,0,.5);}
 @media (min-width:600px){ .onboard-overlay{align-items:center;} .onboard-sheet{border-radius:24px;} }
 .onboard-step-label{font-family:var(--font-m);font-size:10.5px;color:var(--accent2);letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px;}
 .onboard-sheet h2{font-family:var(--font-d);font-size:20px;margin:0 0 6px;}
@@ -855,12 +863,18 @@ let NEXT_DEADLINE = null; // Date or null
 let NEXT_GW = null;
 
 async function loadCoreData(){
-  const [metaSnap, playersSnap, managersSnap, clubsSnap] = await Promise.all([
-    getDoc(doc(db, "leagueMeta/info")),
-    getDoc(doc(db, "playersMeta/current")),
-    getDocs(collection(db, "managers")),
-    getDocs(collection(db, "managerClubs")),
-  ]);
+  let metaSnap, playersSnap, managersSnap, clubsSnap;
+  try {
+    [metaSnap, playersSnap, managersSnap, clubsSnap] = await Promise.all([
+      getDoc(doc(db, "leagueMeta/info")),
+      getDoc(doc(db, "playersMeta/current")),
+      getDocs(collection(db, "managers")),
+      getDocs(collection(db, "managerClubs")),
+    ]);
+  } catch(err) {
+    console.error("loadCoreData failed:", err);
+    return;
+  }
   if(metaSnap.exists()){
     const meta = metaSnap.data();
     GW_COUNT = meta.lastSyncedGw || 0;
@@ -1007,8 +1021,14 @@ function closeOnboarding(){
 }
 function renderOnboardStep(step){
   const sheet = document.getElementById("onboard-sheet");
+  // Only offer a way to cancel/back out if there's already a complete
+  // profile to fall back to — a genuine first-time visitor has nothing to
+  // fall back to yet, so setup stays mandatory for them specifically.
+  const canCancel = !!(ident.team && ident.club);
+  const closeBtnHtml = canCancel ? `<button class="close-btn" id="onboard-close">✕</button>` : "";
   if(step === 1){
     sheet.innerHTML = `
+      ${closeBtnHtml}
       <div class="onboard-step-label">Step 1 of 2</div>
       <h2>Which team are you?</h2>
       <p class="sub">Pick your manager name so the site remembers you next time.</p>
@@ -1025,6 +1045,7 @@ function renderOnboardStep(step){
     });
   } else {
     sheet.innerHTML = `
+      ${closeBtnHtml}
       <div class="onboard-step-label">Step 2 of 2</div>
       <h2>Pick your favourite club</h2>
       <p class="sub">Tints the site in your team's colours. One-time pick — change it anytime from the top-right.</p>
@@ -1052,7 +1073,14 @@ function renderOnboardStep(step){
       });
     });
   }
+  if(canCancel){
+    document.getElementById("onboard-close").addEventListener("click", closeOnboarding);
+  }
 }
+// Backdrop tap also cancels, same safety rule as the close button itself.
+document.getElementById("onboard-overlay").addEventListener("click", (e) => {
+  if(e.target.id === "onboard-overlay" && ident.team && ident.club) closeOnboarding();
+});
 document.getElementById("viewing-pill").addEventListener("click", () => openOnboarding(1));
 
 // ---------- Toast utility ----------
@@ -1257,32 +1285,51 @@ function tone(freq, start, dur, type="sine", gain=0.15){
   return osc;
 }
 function sadTrombone(){
-  [261,246,233,220].forEach((f,i)=> tone(f, i*0.28, 0.32, "sawtooth", 0.09));
+  return [261,246,233,220].map((f,i)=> tone(f, i*0.28, 0.32, "sawtooth", 0.09));
 }
 function fanfare(){
-  [523,659,784,1046].forEach((f,i)=> tone(f, i*0.09, 0.22, "triangle", 0.1));
+  return [523,659,784,1046].map((f,i)=> tone(f, i*0.09, 0.22, "triangle", 0.1));
 }
 function buzzer(){
-  tone(140, 0, 0.18, "square", 0.1);
-  tone(110, 0.08, 0.2, "square", 0.1);
+  return [tone(140, 0, 0.18, "square", 0.1), tone(110, 0.08, 0.2, "square", 0.1)];
 }
 function pop(){
-  tone(880, 0, 0.09, "sine", 0.08);
-  tone(1200, 0.05, 0.12, "sine", 0.06);
+  return [tone(880, 0, 0.09, "sine", 0.08), tone(1200, 0.05, 0.12, "sine", 0.06)];
 }
 const SFX_DURATIONS = { muppet: 1200, form: 500, bigbrain: 300, default: 200 };
+// Tracks whatever award SFX is currently playing (either kind) so it can be
+// cut off immediately if the person closes the sheet before it finishes —
+// otherwise a longer custom-uploaded clip just keeps playing in the
+// background after the popup's gone.
+let activeSfxAudio = null;
+let activeSfxOscillators = [];
+function stopActiveSfx(){
+  if(activeSfxAudio){
+    activeSfxAudio.pause();
+    activeSfxAudio = null;
+  }
+  activeSfxOscillators.forEach(osc => { try{ osc.stop(); }catch(e){} });
+  activeSfxOscillators = [];
+  // Restore the playlist volume right away too — for a custom-uploaded clip,
+  // the restore normally happens on its "ended" event, which never fires if
+  // we just cut it off early, so without this the music would stay ducked
+  // at near-silence indefinitely.
+  if(currentAudioEl && !musicPaused) fadeAudioVolume(currentAudioEl, currentTargetVolume(), 200);
+}
 // Plays the roast SFX for an award, ducking the playlist for the duration and
 // restoring it afterward. Returns nothing — this is the one call site to use.
 function playAwardSfx(awardId){
+  stopActiveSfx(); // in case a previous award's sound is still going
   const url = awardMedia[awardId]?.soundUrl;
   if(url){
     const a = new Audio(url); a.volume = 0.7;
     a.play().catch(()=>{});
+    activeSfxAudio = a;
     duckMusicFor(a); // restores exactly when this custom clip ends
     return;
   }
   const fn = awardId==="muppet" ? sadTrombone : awardId==="form" ? fanfare : awardId==="bigbrain" ? buzzer : pop;
-  fn();
+  activeSfxOscillators = fn();
   duckMusicFor(SFX_DURATIONS[awardId] || SFX_DURATIONS.default);
 }
 // ---------- Intro sting: badge reveal + audio, 4 seconds, plays every visit ----------
@@ -2739,9 +2786,12 @@ async function renderTemplateDifferential(){
 const overlay = document.getElementById("overlay");
 const sheet = document.getElementById("sheet");
 function openSheet(html){ document.getElementById("sheet-content").innerHTML = html; overlay.classList.add("show"); sheet.classList.add("show"); }
-function closeSheet(){ overlay.classList.remove("show"); sheet.classList.remove("show"); }
+function closeSheet(){ overlay.classList.remove("show"); sheet.classList.remove("show"); stopActiveSfx(); }
 overlay.addEventListener("click", closeSheet);
 document.getElementById("sheet-close").addEventListener("click", closeSheet);
+// Also stop if the person switches away from this browser tab entirely —
+// nobody wants a roast sound playing to an empty background tab.
+document.addEventListener("visibilitychange", () => { if(document.hidden) stopActiveSfx(); });
 
 const gwPlayerStatsCache = {};
 async function getGwPlayerStats(gw){
@@ -3136,6 +3186,7 @@ boot();
 
 document.querySelectorAll(".tab").forEach(btn=>{
   btn.addEventListener("click",()=>{
+    closeSheet(); // switching tabs while a sheet is open (e.g. mid-roast-sound) should close it too, not leave it stuck on top with audio still going
     document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
     document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
     btn.classList.add("active");
