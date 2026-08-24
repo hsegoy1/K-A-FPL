@@ -429,6 +429,11 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .season-prize-row .amt2{font-family:var(--font-m);color:var(--gold);font-weight:700;font-size:14px;}
 .budget-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0;}
 .budget-cell{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:10px;padding:9px 11px;}
+.activity-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:12px;}
+.activity-row:last-child{border-bottom:none;}
+.activity-row .act-name{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.activity-row .act-today{font-family:var(--font-m);color:var(--accent2);flex-shrink:0;}
+.activity-row .act-week{font-family:var(--font-m);color:var(--muted);font-size:10.5px;flex-shrink:0;}
 .budget-cell .bl{font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
 .budget-cell .bv{font-family:var(--font-m);font-size:15px;font-weight:700;margin-top:2px;}
 .budget-status{border-radius:12px;padding:12px 14px;text-align:center;font-family:var(--font-d);font-weight:700;font-size:14px;margin-top:6px;}
@@ -1067,6 +1072,7 @@ function renderOnboardStep(step){
           setDoc(doc(db, `managerClubs/${me.id}`), { club: ident.club }).catch(()=>{});
           renderStandings(); // reflect it immediately, don't wait for a refresh
         }
+        logAccessIfNeeded(me);
         // This click is a real user gesture, so audio is allowed to play —
         // safe to run the intro (with sound) right from here.
         runIntro(startPlaylist);
@@ -1096,6 +1102,33 @@ function showToast(msg, dur=3200){
 const NPT_ZONE = "Asia/Kathmandu";
 function fmtNPT(date, opts){
   return new Intl.DateTimeFormat("en-US", {timeZone: NPT_ZONE, ...opts}).format(date);
+}
+function todayNPT(){
+  return new Intl.DateTimeFormat("en-CA", {timeZone: NPT_ZONE}).format(new Date()); // "en-CA" → clean YYYY-MM-DD
+}
+function last7NPTDates(){
+  const dates = [];
+  for(let i=0; i<7; i++){
+    dates.push(new Intl.DateTimeFormat("en-CA", {timeZone: NPT_ZONE}).format(new Date(Date.now() - i*86400000)));
+  }
+  return dates;
+}
+
+// ---------- Visit logging (admin-only view) ----------
+// Dedupes per browser session, not per calendar day — refreshing the same
+// tab won't inflate the count, but genuinely closing and reopening later
+// (even the same day) correctly counts as a new visit.
+function logAccessIfNeeded(manager){
+  if(!manager) return;
+  if(sessionStorage.getItem("fpl_access_logged")) return;
+  sessionStorage.setItem("fpl_access_logged", "1");
+  const date = todayNPT();
+  setDoc(doc(db, `accessLog/${manager.id}_${date}`), {
+    entryId: manager.id,
+    teamName: manager.teamName,
+    date,
+    count: increment(1),
+  }, { merge: true }).catch(()=>{});
 }
 
 // ---------- Deadline countdown (live, ticks every second, shown in NPT) ----------
@@ -1535,6 +1568,7 @@ function openAdminPanel(tab){
       <button class="cap-gw-pill ${tab==='playlist'?'on':''}" data-tab="playlist">🎵 Playlist</button>
       <button class="cap-gw-pill ${tab==='intro'?'on':''}" data-tab="intro">✨ Intro</button>
       <button class="cap-gw-pill ${tab==='prize'?'on':''}" data-tab="prize">💰 Prize Setup</button>
+      <button class="cap-gw-pill ${tab==='activity'?'on':''}" data-tab="activity">📊 Activity</button>
     </div>
     <div id="admin-tab-body"></div>
   `);
@@ -1546,6 +1580,7 @@ function openAdminPanel(tab){
   else if(tab === "banter") renderAdminBanterTab();
   else if(tab === "playlist") renderAdminPlaylistTab();
   else if(tab === "intro") renderAdminIntroTab();
+  else if(tab === "activity") renderAdminActivityTab();
   else renderAdminPrizeTab();
 }
 
@@ -1756,6 +1791,44 @@ function renderAdminIntroTab(){
       showToast("Upload failed — try again");
     }
   });
+}
+
+async function renderAdminActivityTab(){
+  document.getElementById("admin-tab-body").innerHTML = `<div class="sub">Loading…</div>`;
+  const snap = await getDocs(collection(db, "accessLog"));
+  const logs = snap.docs.map(d => d.data());
+
+  const today = todayNPT();
+  const last7 = last7NPTDates();
+
+  const totalToday = logs.filter(l => l.date === today).reduce((s,l) => s + (l.count||0), 0);
+  const distinctDates = new Set(logs.map(l => l.date));
+  const totalAll = logs.reduce((s,l) => s + (l.count||0), 0);
+  const leagueDailyAvg = distinctDates.size > 0 ? totalAll / distinctDates.size : 0;
+
+  const byManager = {};
+  logs.forEach(l => {
+    if(!byManager[l.entryId]) byManager[l.entryId] = { teamName: l.teamName, today: 0, weekTotal: 0 };
+    if(l.date === today) byManager[l.entryId].today += (l.count||0);
+    if(last7.includes(l.date)) byManager[l.entryId].weekTotal += (l.count||0);
+  });
+  const rows = Object.values(byManager).sort((a,b) => b.today - a.today || b.weekTotal - a.weekTotal);
+
+  document.getElementById("admin-tab-body").innerHTML = `
+    <p class="sub" style="margin-bottom:10px">Counts real visits (deduped per browser session) — refreshing the same tab doesn't inflate this, closing and reopening later does.</p>
+    <div class="budget-grid" style="margin-bottom:16px;">
+      <div class="budget-cell"><div class="bl">Total Accesses Today</div><div class="bv">${totalToday}</div></div>
+      <div class="budget-cell"><div class="bl">League Avg / Day</div><div class="bv">${leagueDailyAvg.toFixed(1)}</div></div>
+    </div>
+    <div class="section-title" style="margin-top:0"><span class="bar"></span>Per Manager</div>
+    ${rows.length===0 ? `<div class="sub">No visits logged yet.</div>` : rows.map(r => `
+      <div class="activity-row">
+        <div class="act-name">${r.teamName}</div>
+        <div class="act-today">${r.today} today</div>
+        <div class="act-week">${(r.weekTotal/7).toFixed(1)}/day (7d)</div>
+      </div>
+    `).join("")}
+  `;
 }
 
 function getAwardGif(id){ return awardMedia[id]?.gifUrl || null; }
@@ -3147,6 +3220,7 @@ async function boot(){
       setDoc(doc(db, `managerClubs/${me.id}`), { club: ident.club }).catch(()=>{});
       renderStandings();
     }
+    logAccessIfNeeded(me);
     // Returning visitor: play the intro immediately, every time — the visual
     // isn't blocked by anything, and any audio that gets blocked by the
     // browser's autoplay rule will simply catch up silently on whatever the
