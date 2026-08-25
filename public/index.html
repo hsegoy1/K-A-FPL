@@ -126,8 +126,14 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 /* ---------- Table split view (fixtures appear alongside standings in per-GW mode) ---------- */
 .table-split{display:flex;gap:10px;align-items:flex-start;}
 .table-col-standings{flex:1;min-width:0;}
-.table-col-fixtures{width:42%;flex-shrink:0;background:var(--panel-glass);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
+.table-col-fixtures{width:42%;flex-shrink:0;background:var(--panel-glass);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;position:sticky;top:12px;align-self:flex-start;max-height:calc(100vh - 24px);display:flex;flex-direction:column;}
 .table-col-fixtures.hidden{display:none;}
+.fixtures-scroll{overflow-y:auto;}
+.fixtures-nav{display:flex;align-items:center;justify-content:space-between;padding:10px 10px 6px;flex-shrink:0;}
+.fixtures-nav .col-title{padding:0;}
+.fixtures-nav-btns{display:flex;align-items:center;gap:6px;}
+.fx-nav-btn{width:24px;height:24px;border-radius:7px;background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--text);font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.fx-nav-btn:disabled{opacity:.3;cursor:default;}
 .table-col-standings.compact .row{padding:8px 9px;gap:7px;border-radius:10px;margin-bottom:5px;}
 .table-col-standings.compact .avatar{width:26px;height:26px;border-radius:7px;font-size:11px;}
 .table-col-standings.compact .rinfo .team{font-size:12.5px;}
@@ -624,8 +630,14 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
         <div id="standings"></div>
       </div>
       <div class="table-col-fixtures hidden" id="table-col-fixtures">
-        <div class="col-title">Fixtures</div>
-        <div id="fixtures-list"></div>
+        <div class="fixtures-nav">
+          <div class="col-title" id="fixtures-gw-label">Fixtures · GW1</div>
+          <div class="fixtures-nav-btns">
+            <button class="fx-nav-btn" id="fx-nav-prev">◀</button>
+            <button class="fx-nav-btn" id="fx-nav-next">▶</button>
+          </div>
+        </div>
+        <div class="fixtures-scroll"><div id="fixtures-list"></div></div>
       </div>
     </div>
   </div>
@@ -1888,7 +1900,8 @@ function renderStandings(){
   const fixturesCol = document.getElementById("table-col-fixtures");
   // Fixtures always show alongside standings — in Overall mode they default
   // to the latest tracked gameweek (auto-advances once the next GW starts),
-  // otherwise whichever specific GW is selected.
+  // otherwise whichever specific GW is selected. The fixtures panel then has
+  // its own independent GW browser (the ◀ ▶ arrows) on top of this default.
   const fixturesTargetGw = mode === "overall" ? GW_COUNT : mode;
   if(!fixturesTargetGw){
     standingsCol.classList.remove("compact");
@@ -1896,7 +1909,7 @@ function renderStandings(){
   } else {
     standingsCol.classList.add("compact");
     fixturesCol.classList.remove("hidden");
-    renderFixtures(fixturesTargetGw);
+    setFixturesViewGw(fixturesTargetGw);
   }
   if(managers.length === 0){
     document.getElementById("standings").innerHTML = `<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px;">Waiting for league data — run a sync to populate standings.</div>`;
@@ -1919,6 +1932,22 @@ function renderStandings(){
 }
 
 // ---------- Fixtures panel: real matches for the selected gameweek, with match detail popups ----------
+// The panel has its own GW browser (◀ ▶), independent of the main standings
+// mode — switching the main Table view resets it to a sensible default, but
+// the person can then flip ahead/back within the panel without that
+// affecting which gameweek's standings are shown.
+const SEASON_LENGTH_GW = 38;
+let fixturesViewGw = 1;
+function setFixturesViewGw(gw){
+  fixturesViewGw = Math.max(1, Math.min(gw, SEASON_LENGTH_GW));
+  document.getElementById("fixtures-gw-label").textContent = `Fixtures · GW${fixturesViewGw}`;
+  document.getElementById("fx-nav-prev").disabled = fixturesViewGw <= 1;
+  document.getElementById("fx-nav-next").disabled = fixturesViewGw >= SEASON_LENGTH_GW;
+  renderFixtures(fixturesViewGw);
+}
+document.getElementById("fx-nav-prev").addEventListener("click", () => setFixturesViewGw(fixturesViewGw - 1));
+document.getElementById("fx-nav-next").addEventListener("click", () => setFixturesViewGw(fixturesViewGw + 1));
+
 // No caching here on purpose — fixture data changes (live scores during
 // play, a match going from "upcoming" to "finished") and this needs to
 // reflect that the next time it's rendered, not serve a stale snapshot
@@ -2215,8 +2244,13 @@ function renderPrize(){
     earnings[w.teamName]+=cfg.perMW;
     rows.push(`<div class="mw-prize-row"><div class="gw">GW${gw}</div><div class="who">${w.teamName} — ${gwPts(w)} pts</div><div class="amt">+₹${cfg.perMW}</div></div>`);
   }
-  document.getElementById("earnings").innerHTML = Object.entries(earnings).sort((a,b)=>b[1]-a[1]).map(([t,amt],i)=>`
-    <div class="earn-row"><div class="pos">${i+1}</div><div class="team">${t}</div><div class="amt">₹${amt}</div></div>`).join("");
+  // Only show managers who've actually won something — with 35 managers,
+  // padding this with everyone still on ₹0 just makes it a long, mostly
+  // uninteresting list.
+  const earners = Object.entries(earnings).filter(([,amt]) => amt > 0).sort((a,b)=>b[1]-a[1]);
+  document.getElementById("earnings").innerHTML = earners.length > 0
+    ? earners.map(([t,amt],i)=>`<div class="earn-row"><div class="pos">${i+1}</div><div class="team">${t}</div><div class="amt">₹${amt}</div></div>`).join("")
+    : `<div style="padding:16px;text-align:center;color:var(--muted);font-size:12px;">No one's won a gameweek prize yet.</div>`;
   document.getElementById("mw-prizes").innerHTML = rows.join("") || `<div style="padding:16px;text-align:center;color:var(--muted);font-size:12px;">No confirmed gameweek winners yet.</div>`;
 }
 
