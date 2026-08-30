@@ -82,6 +82,23 @@ async function main() {
   const teamsById = new Map(bootstrap.teams.map((t) => [t.id, t.short_name]));
   const events = bootstrap.events;
 
+  // Team strength ratings (FPL's own attack/defence numbers, home vs away
+  // splits) — powers "Fixture Weather" icons on the frontend (blowout risk,
+  // upset alert, likely 0-0). Written once per sync since it barely changes
+  // week to week, but cheap enough not to bother gating further.
+  const teamStrength = {};
+  bootstrap.teams.forEach((t) => {
+    teamStrength[t.short_name] = {
+      attackHome: t.strength_attack_home,
+      attackAway: t.strength_attack_away,
+      defenceHome: t.strength_defence_home,
+      defenceAway: t.strength_defence_away,
+      overallHome: t.strength_overall_home,
+      overallAway: t.strength_overall_away,
+    };
+  });
+  await db.doc("teamsMeta/strength").set({ teams: teamStrength, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+
   // Track the CURRENT gameweek from the moment its deadline passes (kickoff),
   // not just once every match is over — this is what makes standings update
   // live as Saturday's games happen instead of sitting blank all weekend.
