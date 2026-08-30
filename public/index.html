@@ -114,8 +114,8 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
    correctly keeps a whole block together in one column via break-inside,
    rather than letting a title and its card land in different columns. */
 @media (min-width: 700px){
-  #view-insights.active{column-count:2;column-gap:20px;}
-  #view-insights .insight-block{break-inside:avoid;-webkit-column-break-inside:avoid;display:inline-block;width:100%;vertical-align:top;}
+  #view-insights.active, #view-drama.active{column-count:2;column-gap:20px;}
+  #view-insights .insight-block, #view-drama .insight-block{break-inside:avoid;-webkit-column-break-inside:avoid;display:inline-block;width:100%;vertical-align:top;}
 }
 
 .section-title{font-family:var(--font-d);font-size:16px;font-weight:700;margin:16px 0 10px;display:flex;align-items:center;gap:8px;}
@@ -127,6 +127,22 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .autopsy-text p{margin:0 0 10px;}
 .autopsy-text p:last-child{margin-bottom:0;}
 .shame-card{margin-bottom:14px;}
+.insight-filter-bar{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
+.if-pill{background:var(--panel-glass);border:1px solid var(--line);border-radius:20px;padding:5px 14px;font-family:var(--font-m);font-size:11px;cursor:pointer;color:var(--muted);transition:all .15s;}
+.if-pill.active{background:var(--grad);color:#0D0715;border-color:transparent;font-weight:700;}
+.totw-wrap{margin-bottom:14px;}
+.totw-section{background:var(--panel-glass);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;margin-bottom:6px;}
+.totw-header{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;cursor:pointer;}
+.totw-header h3{font-family:var(--font-d);font-size:13.5px;margin:0;}
+.totw-chevron{color:var(--muted);font-size:12px;transition:transform .2s;}
+.totw-section.open .totw-chevron{transform:rotate(180deg);}
+.totw-body{display:none;padding:0 10px 10px;}
+.totw-section.open .totw-body{display:block;}
+.totw-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px;margin-top:6px;}
+.totw-player{text-align:center;background:rgba(255,255,255,.03);border-radius:8px;padding:5px 3px;}
+.totw-player .tpos{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
+.totw-player .tname{font-size:10px;font-weight:700;margin:2px 0;}
+.totw-player .tpts{font-family:var(--font-m);font-size:11px;color:var(--accent2);font-weight:700;}
 .shame-spotlight{font-size:12.5px;line-height:1.5;background:rgba(255,77,109,.08);border:1px solid rgba(255,77,109,.25);border-radius:10px;padding:10px 12px;margin:10px 0;}
 .shame-ticker{display:flex;flex-direction:column;gap:2px;}
 .shame-row{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:11.5px;border-bottom:1px solid var(--line);}
@@ -179,6 +195,35 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .court-vote .guilty{background:rgba(255,77,109,.1);border-color:rgba(255,77,109,.4);color:var(--red);}
 .court-vote .innocent{background:rgba(57,255,136,.1);border-color:rgba(57,255,136,.4);color:var(--green);}
 .court-result{text-align:center;font-family:var(--font-m);font-size:13px;font-weight:700;margin-top:10px;}
+.diffdanger-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12px;}
+.diffdanger-row:last-child{border-bottom:none;}
+.diffdanger-row .dplayer{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.diffdanger-row .dteam{font-size:10px;color:var(--muted);}
+.diffdanger-row .downs{font-family:var(--font-m);font-size:10px;color:var(--muted);flex-shrink:0;}
+.diffdanger-row .dlastpts{font-family:var(--font-m);font-weight:700;color:var(--accent2);flex-shrink:0;}
+.pressconf-seg{margin-bottom:14px;}
+.pressconf-seg:last-child{margin-bottom:0;}
+.pressconf-who{font-family:var(--font-m);font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px;}
+.pressconf-q{font-size:11.5px;color:var(--muted);font-style:italic;margin-bottom:4px;}
+.pressconf-a{font-size:12.5px;line-height:1.55;}
+.lostpts-row{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;}
+.lostpts-row .n{width:16px;color:var(--muted);font-family:var(--font-m);flex-shrink:0;}
+.lostpts-row .t{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.lostpts-row .v{font-family:var(--font-m);color:var(--red);font-weight:700;flex-shrink:0;}
+.lab-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:12px;}
+.lab-row:last-child{border-bottom:none;}
+.lab-row .lgw{font-family:var(--font-m);font-size:9px;color:var(--muted);flex-shrink:0;width:28px;}
+.lab-move{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.lab-move .lin{color:var(--green);font-weight:600;}
+.lab-move .lout{color:var(--red);}
+.lab-verdict{font-family:var(--font-m);font-size:10px;font-weight:700;flex-shrink:0;}
+.lab-verdict.genius{color:var(--green);}
+.lab-verdict.disaster{color:var(--red);}
+.lab-verdict.neutral{color:var(--muted);}
+.copied-group{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:8px;}
+.copied-group:last-child{margin-bottom:0;}
+.copied-player{font-weight:700;font-size:12.5px;margin-bottom:4px;}
+.copied-managers{font-size:11px;color:var(--muted);}
 .section-title .bar{width:3px;height:14px;background:var(--grad);border-radius:2px;}
 
 .row{display:flex;align-items:center;gap:12px;background:var(--panel-glass);backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);border:1px solid var(--line);border-radius:var(--radius);padding:11px 12px;margin-bottom:8px;cursor:pointer;opacity:0;transform:translateY(8px);animation:rowIn .4s ease forwards;}
@@ -685,7 +730,8 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 <nav class="tabbar">
   <button class="tab active" data-view="table"><span class="ic">🏆</span>Table</button>
   <button class="tab" data-view="insights"><span class="ic">📊</span>Insights</button>
-  <button class="tab" data-view="awards"><span class="ic">🎭</span>Awards</button>
+  <button class="tab" data-view="drama"><span class="ic">🎭</span>Drama</button>
+  <button class="tab" data-view="awards"><span class="ic">🏆</span>Awards</button>
   <button class="tab" data-view="prize"><span class="ic">💰</span>Prize</button>
 </nav>
 
@@ -694,7 +740,7 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
     <div class="section-title"><span class="bar"></span>This Week's Highlights</div>
     <div class="highlights-grid" id="highlights"></div>
     <div id="autopsy-card-wrap"></div>
-    <div id="transfer-shaming-wrap"></div>
+    <div id="totw-wrap"></div>
     <div class="section-title"><span class="bar"></span><span id="table-title">Overall Standings</span></div>
     <div class="table-split" id="table-split">
       <div class="table-col-standings" id="table-col-standings">
@@ -714,7 +760,13 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
   </div>
 
   <div id="view-insights" class="view">
-    <div class="insight-block">
+    <div class="insight-filter-bar">
+      <button class="if-pill active" data-cat="all">All</button>
+      <button class="if-pill" data-cat="gw">🔴 This GW</button>
+      <button class="if-pill" data-cat="season">📊 Season</button>
+    </div>
+
+    <div class="insight-block" data-cat="season">
       <div class="section-title"><span class="bar"></span>Momentum</div>
       <div class="kpi-card clickable" data-detail="momentum">
         <h3>Who's heating up, who's cooling off</h3>
@@ -724,7 +776,7 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
       </div>
     </div>
 
-    <div class="insight-block">
+    <div class="insight-block" data-cat="gw">
       <div class="section-title"><span class="bar"></span>Form Guide</div>
       <div class="kpi-card clickable" data-detail="form">
         <h3>Best average over the last 3 gameweeks</h3>
@@ -734,7 +786,7 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
       </div>
     </div>
 
-    <div class="insight-block">
+    <div class="insight-block" data-cat="season">
       <div class="section-title"><span class="bar"></span>Consistency</div>
       <div class="kpi-card clickable" data-detail="consistency">
         <h3>Steady scorers vs boom-or-bust</h3>
@@ -744,7 +796,25 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
       </div>
     </div>
 
-    <div class="insight-block">
+    <div class="insight-block" data-cat="gw">
+      <div class="section-title"><span class="bar"></span>Transfer Verdict</div>
+      <div class="kpi-card">
+        <h3>Best & worst move of the gameweek</h3>
+        <div class="sub" id="transfer-verdict-sub">Points the incoming player scored vs. the one dropped</div>
+        <div id="transfer-verdict"></div>
+      </div>
+    </div>
+
+    <div class="insight-block" data-cat="gw">
+      <div class="section-title"><span class="bar"></span>Formation Trends</div>
+      <div class="kpi-card">
+        <h3>What the league's lining up with this week</h3>
+        <div class="sub" id="formation-sub"></div>
+        <div id="formation-list"></div>
+      </div>
+    </div>
+
+    <div class="insight-block" data-cat="season">
       <div class="section-title"><span class="bar"></span>Bench Regret</div>
       <div class="kpi-card clickable" data-detail="bench">
         <h3>Points left unused on the bench, all season</h3>
@@ -754,7 +824,7 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
       </div>
     </div>
 
-    <div class="insight-block">
+    <div class="insight-block" data-cat="season">
       <div class="section-title"><span class="bar"></span>Smart Money</div>
       <div class="kpi-card clickable" data-detail="value">
         <h3>Team value growth this season</h3>
@@ -764,40 +834,7 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
       </div>
     </div>
 
-    <div class="insight-block">
-      <div class="section-title"><span class="bar"></span>Transfer Verdict</div>
-      <div class="kpi-card">
-        <h3>Best & worst move of the gameweek</h3>
-        <div class="sub" id="transfer-verdict-sub">Points the incoming player scored vs. the one dropped</div>
-        <div id="transfer-verdict"></div>
-      </div>
-    </div>
-
-    <div class="insight-block">
-      <div class="section-title"><span class="bar"></span>Formation Trends</div>
-      <div class="kpi-card">
-        <h3>What the league's lining up with this week</h3>
-        <div class="sub" id="formation-sub"></div>
-        <div id="formation-list"></div>
-      </div>
-    </div>
-
-    <div class="insight-block">
-      <div class="section-title"><span class="bar"></span>Lead Changes</div>
-      <div class="kpi-card clickable" data-detail="leadchanges" id="lead-changes-card"></div>
-    </div>
-
-    <div class="insight-block">
-      <div class="section-title"><span class="bar"></span>Title Race</div>
-      <div class="kpi-card clickable" data-detail="titlerace" id="h2h-card"></div>
-    </div>
-
-    <div class="insight-block">
-      <div class="section-title"><span class="bar"></span>Nemesis</div>
-      <div class="kpi-card clickable" data-detail="nemesis" id="nemesis-card"></div>
-    </div>
-
-    <div class="insight-block">
+    <div class="insight-block" data-cat="season">
       <div class="section-title"><span class="bar"></span>Chip Usage</div>
       <div class="kpi-card">
         <h3>Who's played what, and did it pay off</h3>
@@ -806,7 +843,7 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
       </div>
     </div>
 
-    <div class="insight-block">
+    <div class="insight-block" data-cat="season">
       <div class="section-title"><span class="bar"></span>Captaincy Alpha</div>
       <div class="kpi-card">
         <h3>Points actually gained or lost from captaincy calls</h3>
@@ -815,12 +852,12 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
       </div>
     </div>
 
-    <div class="insight-block">
+    <div class="insight-block" data-cat="season">
       <div class="section-title"><span class="bar"></span>Doppelgänger</div>
       <div class="kpi-card clickable" data-detail="doppel" id="doppel-card"></div>
     </div>
 
-    <div class="insight-block">
+    <div class="insight-block" data-cat="gw">
       <div class="section-title"><span class="bar"></span>Transfer Activity</div>
       <div class="kpi-card">
         <h3>Who moved who this gameweek</h3>
@@ -829,7 +866,7 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
       </div>
     </div>
 
-    <div class="insight-block">
+    <div class="insight-block" data-cat="season">
       <div class="section-title"><span class="bar"></span>Template vs Differential</div>
       <div class="kpi-card clickable" data-detail="template">
         <h3>Most-owned XI across the league</h3>
@@ -843,6 +880,55 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
       </div>
     </div>
 
+    <div class="insight-block" data-cat="season">
+      <div class="section-title"><span class="bar"></span>Manager DNA <span id="dna-new-badge"></span></div>
+      <div class="kpi-card clickable" data-detail="dna">
+        <h3>Your playing style this season</h3>
+        <div id="dna-display"></div>
+        <div class="tap-more">tap to see everyone's DNA →</div>
+      </div>
+    </div>
+
+    <div class="insight-block" data-cat="season">
+      <div class="section-title"><span class="bar"></span>FPL IQ <span id="fpliq-new-badge"></span></div>
+      <div class="kpi-card clickable" data-detail="fpliq">
+        <h3>Your decision quality this season</h3>
+        <div id="fpliq-display"></div>
+        <div class="tap-more">tap for league IQ ranking →</div>
+      </div>
+    </div>
+
+    <div class="insight-block" data-cat="season">
+      <div class="section-title"><span class="bar"></span>Lost Points Index <span id="lostpts-badge"></span></div>
+      <div class="kpi-card clickable" data-detail="lostpts">
+        <h3>Points lost to wrong starting XI decisions, all season</h3>
+        <div class="sub">When a bench player outscores your weakest starter, that gap counts</div>
+        <div id="lostpts-display"></div>
+        <div class="tap-more">tap for full ranking →</div>
+      </div>
+    </div>
+
+    <div class="insight-block" data-cat="gw">
+      <div class="section-title"><span class="bar"></span>Differential Danger <span id="diffdanger-badge"></span></div>
+      <div class="kpi-card">
+        <h3>Low-ownership players who could wreck your week</h3>
+        <div class="sub">Owned by 1-3 managers — if they haul, the gap swings hard</div>
+        <div id="diffdanger-display"></div>
+      </div>
+    </div>
+
+    <div class="insight-block" data-cat="gw">
+      <div class="section-title"><span class="bar"></span>Transfer Lab <span id="transferlab-badge"></span></div>
+      <div class="kpi-card">
+        <h3>Did your transfers actually pay off?</h3>
+        <div class="sub">Points scored by your incoming player vs the one you dropped, same GW</div>
+        <div id="transferlab-display"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Drama tab — fun, social, banter -->
+  <div id="view-drama" class="view">
     <div class="insight-block">
       <div class="section-title"><span class="bar"></span>GW Bingo <span id="bingo-new-badge"></span></div>
       <div class="kpi-card" id="bingo-card-wrap">
@@ -853,11 +939,18 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
     </div>
 
     <div class="insight-block">
-      <div class="section-title"><span class="bar"></span>Manager DNA <span id="dna-new-badge"></span></div>
-      <div class="kpi-card clickable" data-detail="dna">
-        <h3>Your playing style this season</h3>
-        <div id="dna-display"></div>
-        <div class="tap-more">tap to see everyone's DNA →</div>
+      <div class="section-title"><span class="bar"></span>Press Conference <span id="pressconf-badge"></span></div>
+      <div class="kpi-card">
+        <h3>Post-match with this week's winner and loser</h3>
+        <div id="pressconf-display"></div>
+      </div>
+    </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>FPL Court <span id="court-new-badge"></span></div>
+      <div class="kpi-card" id="court-card">
+        <h3>This week's tribunal</h3>
+        <div id="court-display"></div>
       </div>
     </div>
 
@@ -871,12 +964,35 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
     </div>
 
     <div class="insight-block">
-      <div class="section-title"><span class="bar"></span>FPL IQ <span id="fpliq-new-badge"></span></div>
-      <div class="kpi-card clickable" data-detail="fpliq">
-        <h3>Your decision quality this season</h3>
-        <div id="fpliq-display"></div>
-        <div class="tap-more">tap for league IQ ranking →</div>
+      <div class="section-title"><span class="bar"></span>Transfer Shaming</div>
+      <div class="kpi-card" id="transfer-shaming-wrap">
+        <h3>Points burned on transfer hits, all season</h3>
+        <div class="sub">The hall of shame for reckless hit-takers</div>
       </div>
+    </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Who Copied Who? <span id="copied-badge"></span></div>
+      <div class="kpi-card">
+        <h3>Same transfer, same week</h3>
+        <div class="sub">Managers who made identical moves this gameweek</div>
+        <div id="copied-display"></div>
+      </div>
+    </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Nemesis</div>
+      <div class="kpi-card clickable" data-detail="nemesis" id="nemesis-card"></div>
+    </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Lead Changes</div>
+      <div class="kpi-card clickable" data-detail="leadchanges" id="lead-changes-card"></div>
+    </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Title Race</div>
+      <div class="kpi-card clickable" data-detail="titlerace" id="h2h-card"></div>
     </div>
 
     <div class="insight-block">
@@ -885,14 +1001,6 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
         <h3>Players you sold who came back to haunt you</h3>
         <div class="sub">Points they've scored since you transferred them out</div>
         <div id="gotaway-display"></div>
-      </div>
-    </div>
-
-    <div class="insight-block">
-      <div class="section-title"><span class="bar"></span>FPL Court <span id="court-new-badge"></span></div>
-      <div class="kpi-card" id="court-card">
-        <h3>This week's tribunal</h3>
-        <div id="court-display"></div>
       </div>
     </div>
   </div>
@@ -1720,23 +1828,205 @@ async function renderFplCourt(){
   }
 }
 
+// ---------- Differential Danger (GW6) ----------
+async function renderDifferentialDanger(){
+  const el=document.getElementById("diffdanger-display");
+  document.getElementById("diffdanger-badge").innerHTML=newBadgeHtml('diffDanger');
+  if(!featureUnlocked('diffDanger')||!GW_COUNT){ el.innerHTML=""; return; }
+  const [squadsSnap, ptsSnap] = await Promise.all([
+    getDoc(doc(db,`gameweekSquads/gw${GW_COUNT}`)),
+    getDoc(doc(db,`gwPlayerPoints/gw${GW_COUNT}`)),
+  ]);
+  if(!squadsSnap.exists()){ el.innerHTML=`<div class="sub">No squad data yet.</div>`; return; }
+  const entries=Object.values(squadsSnap.data().entries||{});
+  const pts=ptsSnap.exists()?ptsSnap.data().points||{}:{};
+  const ownership={};
+  entries.forEach(e=>[...e.starting,...e.bench].forEach(id=>{ownership[id]=(ownership[id]||0)+1;}));
+  const differentials=Object.entries(ownership)
+    .filter(([,count])=>count>=1&&count<=3)
+    .map(([id,count])=>({ id:parseInt(id), count, pts:pts[id]||0, info:playerInfo(parseInt(id)) }))
+    .filter(x=>x.pts>=8)
+    .sort((a,b)=>b.pts-a.pts)
+    .slice(0,6);
+  if(!differentials.length){ el.innerHTML=`<div class="sub">No differentials scored 8+ this GW.</div>`; return; }
+  el.innerHTML=differentials.map(d=>`
+    <div class="diffdanger-row">
+      <div><div class="dplayer">${d.info.n}</div><div class="dteam">${d.info.team} · ${d.info.pos}</div></div>
+      <div class="downs">${d.count} owner${d.count>1?'s':''}</div>
+      <div class="dlastpts">GW${GW_COUNT}: ${d.pts} pts</div>
+    </div>`).join("");
+}
+
+// ---------- Press Conference (GW7) ----------
+async function renderPressConference(){
+  const el=document.getElementById("pressconf-display");
+  document.getElementById("pressconf-badge").innerHTML=newBadgeHtml('pressConference');
+  if(!featureUnlocked('pressConference')||!GW_COUNT){ el.innerHTML=""; return; }
+  const snap=await getDoc(doc(db,`pressConference/gw${GW_COUNT}`));
+  if(!snap.exists()){ el.innerHTML=`<div class="sub">Press conference publishes once GW${GW_COUNT} bonus points confirm.</div>`; return; }
+  const d=snap.data();
+  const seg=(who,data)=>`
+    <div class="pressconf-seg">
+      <div class="pressconf-who">${who.label} · ${who.teamName} · ${who.points} pts</div>
+      <div class="pressconf-q">"${escapeHtml(data.question||"")}"</div>
+      <div class="pressconf-a">${escapeHtml(data.answer||"")}</div>
+    </div>`;
+  el.innerHTML=`
+    ${seg({label:"🏆 Winner",teamName:d.winner.teamName,points:d.winner.points},d.winner)}
+    <div style="border-top:1px solid var(--line);margin:10px 0;"></div>
+    ${seg({label:"💀 Loser",teamName:d.loser.teamName,points:d.loser.points},d.loser)}`;
+}
+
+// ---------- Lost Points Index (GW8) ----------
+async function renderLostPoints(){
+  const el=document.getElementById("lostpts-display");
+  document.getElementById("lostpts-badge").innerHTML=newBadgeHtml('lostPoints');
+  if(!featureUnlocked('lostPoints')||managers.length===0){ el.innerHTML=""; return; }
+  const snaps=await Promise.all(managers.map(m=>getDoc(doc(db,`lostPoints/${m.id}`))));
+  const ranked=snaps
+    .map((s,i)=>s.exists()?{m:managers[i],total:s.data().totalLost||0}:null)
+    .filter(Boolean)
+    .filter(x=>x.total>0)
+    .sort((a,b)=>b.total-a.total)
+    .slice(0,5);
+  if(!ranked.length){ el.innerHTML=`<div class="sub">No lost points tracked yet — check back after GW8.</div>`; return; }
+  el.innerHTML=ranked.map((x,i)=>`
+    <div class="lostpts-row">
+      <span class="n">${i+1}</span>
+      <span class="t">${x.m.teamName}</span>
+      <span class="v">-${x.total} pts</span>
+    </div>`).join("");
+}
+
+// ---------- Transfer Lab (GW8) ----------
+async function renderTransferLab(){
+  const el=document.getElementById("transferlab-display");
+  document.getElementById("transferlab-badge").innerHTML=newBadgeHtml('transferLab');
+  if(!featureUnlocked('transferLab')||!ident.team||!GW_COUNT){ el.innerHTML=""; return; }
+  const me=managers.find(m=>m.teamName===ident.team);
+  if(!me){ el.innerHTML=`<div class="sub">Pick your identity first.</div>`; return; }
+  // Read last 5 GWs of transfers for this manager
+  const gwsToCheck=Array.from({length:Math.min(5,GW_COUNT)},(_,i)=>GW_COUNT-i);
+  const [transferSnaps, ptsSnaps]=await Promise.all([
+    Promise.all(gwsToCheck.map(gw=>getDoc(doc(db,`gameweekTransfers/gw${gw}`)))),
+    Promise.all(gwsToCheck.map(gw=>getDoc(doc(db,`gwPlayerPoints/gw${gw}`)))),
+  ]);
+  const rows=[];
+  gwsToCheck.forEach((gw,i)=>{
+    const tSnap=transferSnaps[i], pSnap=ptsSnaps[i];
+    if(!tSnap.exists()||!pSnap.exists()) return;
+    const entry=tSnap.data().entries?.[me.id];
+    if(!entry||!entry.transfersIn?.length) return;
+    const pts=pSnap.data().points||{};
+    entry.transfersIn.forEach((inId,j)=>{
+      const outId=entry.transfersOut?.[j];
+      if(!outId) return;
+      const inPts=pts[inId]||0, outPts=pts[outId]||0;
+      const delta=inPts-outPts;
+      rows.push({gw, inName:playerInfo(inId).n, outName:playerInfo(outId).n, inPts, outPts, delta});
+    });
+  });
+  if(!rows.length){ el.innerHTML=`<div class="sub">No transfers to analyse yet.</div>`; return; }
+  el.innerHTML=rows.map(r=>`
+    <div class="lab-row">
+      <span class="lgw">GW${r.gw}</span>
+      <div class="lab-move"><span class="lout">${r.outName}</span> → <span class="lin">${r.inName}</span></div>
+      <span class="lab-verdict ${r.delta>0?'genius':r.delta<0?'disaster':'neutral'}">${r.delta>0?`+${r.delta} ✓`:r.delta<0?`${r.delta} ✗`:'0 —'}</span>
+    </div>`).join("");
+}
+
+// ---------- Who Copied Who? (GW8) ----------
+async function renderWhoCopiedWho(){
+  const el=document.getElementById("copied-display");
+  document.getElementById("copied-badge").innerHTML=newBadgeHtml('whoCopiedWho');
+  if(!featureUnlocked('whoCopiedWho')||!GW_COUNT){ el.innerHTML=""; return; }
+  const snap=await getDoc(doc(db,`gameweekTransfers/gw${GW_COUNT}`));
+  if(!snap.exists()){ el.innerHTML=`<div class="sub">No transfers this GW yet.</div>`; return; }
+  const entries=snap.data().entries||{};
+  const playerBuyers={};
+  Object.values(entries).forEach(e=>{
+    (e.transfersIn||[]).forEach(id=>{
+      if(!playerBuyers[id]) playerBuyers[id]=[];
+      playerBuyers[id].push(e.teamName);
+    });
+  });
+  const groups=Object.entries(playerBuyers)
+    .filter(([,teams])=>teams.length>=2)
+    .map(([id,teams])=>({info:playerInfo(parseInt(id)),teams}))
+    .sort((a,b)=>b.teams.length-a.teams.length);
+  if(!groups.length){ el.innerHTML=`<div class="sub">No identical transfers this GW — everyone's an individual.</div>`; return; }
+  el.innerHTML=groups.map(g=>`
+    <div class="copied-group">
+      <div class="copied-player">⇄ ${g.info.n} <span style="font-size:10px;color:var(--muted);font-weight:400">(${g.teams.length} managers)</span></div>
+      <div class="copied-managers">${g.teams.join(', ')}</div>
+    </div>`).join("");
+}
+
+// ---------- TOTW on Table tab ----------
+async function renderTOTW(){
+  const wrap = document.getElementById("totw-wrap");
+  if(!GW_COUNT){ wrap.innerHTML=""; return; }
+  const POS_LABEL={1:"GKP",2:"DEF",3:"MID",4:"FWD"};
+  const [gwSnap, seasonSnap] = await Promise.all([
+    getDoc(doc(db,`dreamTeam/gw${GW_COUNT}`)),
+    getDoc(doc(db,"dreamTeam/season")),
+  ]);
+
+  const totwSection = (id, title, badge, players) => {
+    if(!players?.length) return "";
+    const grid = players.map(p => {
+      const info = playerInfo(p.id||p.elementId||p.id);
+      return `<div class="totw-player">
+        <div class="tpos">${POS_LABEL[p.position]||info.pos}</div>
+        <div class="tname">${info.n||p.name||"?"}</div>
+        <div class="tpts">${p.pts||p.points||0} pts</div>
+      </div>`;
+    }).join("");
+    return `
+      <div class="totw-section" id="${id}">
+        <div class="totw-header" onclick="this.parentElement.classList.toggle('open')">
+          <h3>${badge} ${title}</h3>
+          <span class="totw-chevron">▾</span>
+        </div>
+        <div class="totw-body"><div class="totw-grid">${grid}</div></div>
+      </div>`;
+  };
+
+  wrap.innerHTML = `<div class="totw-wrap">` +
+    (gwSnap.exists() ? totwSection("totw-gw","FPL Team of the Week","⭐",gwSnap.data().players) : "") +
+    (seasonSnap.exists() ? totwSection("totw-season","FPL Team of the Season so far","🏆",seasonSnap.data().players) : "") +
+    `</div>`;
+}
+
+// ---------- Insights filter pills ----------
+function initInsightFilter(){
+  document.querySelectorAll(".if-pill").forEach(pill => {
+    pill.addEventListener("click", () => {
+      document.querySelectorAll(".if-pill").forEach(p=>p.classList.remove("active"));
+      pill.classList.add("active");
+      const cat = pill.dataset.cat;
+      document.querySelectorAll("#view-insights .insight-block").forEach(b => {
+        const bcat = b.dataset.cat || "all";
+        b.style.display = (cat==="all" || bcat===cat) ? "" : "none";
+      });
+    });
+  });
+}
+
+// ---------- Transfer Shaming (now in Drama tab) ----------
 function renderTransferShamingCard(){
   const wrap = document.getElementById("transfer-shaming-wrap");
-  if(!featureUnlocked('transferShaming') || managers.length === 0){ wrap.innerHTML = ""; return; }
+  if(!featureUnlocked('transferShaming') || managers.length === 0){ wrap.innerHTML = "<div class='sub'>No hits taken yet.</div>"; return; }
   const withHits = managers
     .map(m => ({ m, totalHits: m.history.reduce((s,h) => s + (h.transferCost||0), 0) }))
     .filter(x => x.totalHits > 0)
     .sort((a,b) => b.totalHits - a.totalHits);
-  if(withHits.length === 0){ wrap.innerHTML = ""; return; }
+  if(withHits.length === 0){ wrap.innerHTML = "<div class='sub'>No hits taken yet.</div>"; return; }
   const worst = withHits[0];
   wrap.innerHTML = `
-    <div class="kpi-card shame-card">
-      <h3>🫠 Transfer Shaming ${newBadgeHtml('transferShaming')}</h3>
-      <div class="sub">Total points burned on transfer hits this season</div>
-      <div class="shame-spotlight"><b>${worst.m.teamName}</b> has spent <b>${worst.totalHits}</b> points on hits this season — that's ${Math.floor(worst.totalHits/4)} free transfer${Math.floor(worst.totalHits/4)===1?'':'s'} worth, gone.</div>
-      <div class="shame-ticker">
-        ${withHits.slice(0,6).map((x,i) => `<div class="shame-row"><span class="n">${i+1}</span><span class="t">${x.m.teamName}</span><span class="v">-${x.totalHits}</span></div>`).join("")}
-      </div>
+    <div class="shame-spotlight"><b>${worst.m.teamName}</b> has spent <b>${worst.totalHits}</b> points on hits — that's ${Math.floor(worst.totalHits/4)} free transfer${Math.floor(worst.totalHits/4)===1?'':'s'} worth, gone.</div>
+    <div class="shame-ticker">
+      ${withHits.slice(0,6).map((x,i) => `<div class="shame-row"><span class="n">${i+1}</span><span class="t">${x.m.teamName}</span><span class="v">-${x.totalHits}</span></div>`).join("")}
     </div>`;
 }
 
@@ -3078,6 +3368,14 @@ document.getElementById("view-insights").addEventListener("click", async (e) => 
       <div class="squad-header"><div style="font-size:22px">🧬</div><div><h2>Manager DNA</h2><p>Playing style classification based on season decisions</p></div></div>
       ${rows.map(r=>`<div class="mini-rank-row"><span class="t">${r.teamName}</span><span class="v">${r.archetype}</span></div>`).join("") || '<div class="sub">DNA computed after GW3.</div>'}
     `);
+  } else if(type === "lostpts"){
+    const snaps = await Promise.all(managers.map(m=>getDoc(doc(db,`lostPoints/${m.id}`))));
+    const ranked = snaps.map((s,i)=>s.exists()?{m:managers[i],total:s.data().totalLost||0}:null)
+      .filter(Boolean).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
+    openSheet(`
+      <div class="squad-header"><div style="font-size:22px">😭</div><div><h2>Lost Points Index</h2><p>Points lost when a bench player outscored a starter, all season</p></div></div>
+      ${ranked.map((x,i)=>`<div class="mini-rank-row"><span class="n">${i+1}</span><span class="t">${x.m.teamName}</span><span class="v">-${x.total} pts</span></div>`).join("") || '<div class="sub">No data yet — unlocks GW8.</div>'}
+    `);
   } else if(type === "momentum"){
     if(GW_COUNT < MIN_GW_FOR_MOMENTUM){ openSheet(`<div class="sub">Momentum unlocks after GW${MIN_GW_FOR_MOMENTUM}.</div>`); return; }
     const ranks = computeRankHistory();
@@ -3711,15 +4009,54 @@ async function renderPvBody(){
   const m1 = managers.find(m=>m.id===pvCurrentManagerId);
   if(!m1) return;
   if(pvCompareMode && pvCompareManagerId !== null){
-    const m2 = managers.find(m=>m.id===pvCompareManagerId);
     body.innerHTML = `<div class="sub" style="padding:20px;text-align:center;">Loading…</div>`;
-    const [h1, h2] = await Promise.all([renderPitchStage(m1, pvCurrentGw, true), renderPitchStage(m2, pvCurrentGw, true)]);
-    body.innerHTML = `<div class="pv-body-inner" style="max-width:900px;"><div class="pv-split"><div class="pv-team-col">${h1}</div><div class="pv-team-col">${h2}</div></div></div>`;
+    if(pvCompareManagerId === "totw"){
+      const [h1, h2] = await Promise.all([renderPitchStage(m1, pvCurrentGw, true), renderTOTWPitchStage(pvCurrentGw)]);
+      body.innerHTML = `<div class="pv-body-inner" style="max-width:900px;"><div class="pv-split"><div class="pv-team-col">${h1}</div><div class="pv-team-col">${h2}</div></div></div>`;
+    } else {
+      const m2 = managers.find(m=>m.id===pvCompareManagerId);
+      const [h1, h2] = await Promise.all([renderPitchStage(m1, pvCurrentGw, true), renderPitchStage(m2, pvCurrentGw, true)]);
+      body.innerHTML = `<div class="pv-body-inner" style="max-width:900px;"><div class="pv-split"><div class="pv-team-col">${h1}</div><div class="pv-team-col">${h2}</div></div></div>`;
+    }
   } else {
     body.innerHTML = `<div class="sub" style="padding:20px;text-align:center;">Loading…</div>`;
     const html = await renderPitchStage(m1, pvCurrentGw, false);
     body.innerHTML = `<div class="pv-body-inner">${html}</div>`;
   }
+}
+
+// Render the FPL Team of the Week in the same pitch-stage format as a
+// real squad, using the dream team data stored by sync.js.
+async function renderTOTWPitchStage(gw){
+  const snap = await getDoc(doc(db,`dreamTeam/gw${gw}`));
+  if(!snap.exists()) return `<div class="pv-header-info"><div class="nm">FPL Team of the Week</div></div><div class="sub" style="padding:14px;">Not synced yet — check back after a sync run.</div>`;
+  const d = snap.data();
+  const POS_ORDER = {1:0, 2:1, 3:2, 4:3};
+  const lines = [[],[],[],[]];
+  d.players.forEach(p => { lines[POS_ORDER[p.position]||2].push(p); });
+  const zoneClass = ["gk","def","mid","fwd"];
+  let pvUidLocal = 90000;
+  const pitchHtml = lines.map((line,i) => `<div class="pv-zone ${zoneClass[i]}">${line.map(p=>{
+    pvUidLocal++;
+    const info = playerInfo(p.id);
+    return `<div class="pv-jersey">
+      ${jerseySvg(info.team, 'totw'+pvUidLocal)}
+      <div class="pn">${info.n}</div>
+      <div class="pp">${p.points} pts</div>
+    </div>`;
+  }).join("")}</div>`).join("");
+  return `
+    <div class="pv-header-info">
+      <div class="av" style="background:linear-gradient(135deg,#FFD700,#FFA500);color:#000;font-size:16px;">⭐</div>
+      <div><div class="nm">FPL Team of the Week</div><div class="sc">GW${gw} · Official FPL Dream Team</div></div>
+    </div>
+    <div class="pitch-stage">
+      <div class="pitch-wrap">
+        ${pitchMarkingsSvg()}
+        <div class="goal-scene"><div class="goal-frame"><div class="goal-crossbar"></div><div class="goal-post left"></div><div class="goal-post right"></div><div class="goal-net"></div></div><div class="goal-shadow"></div></div>
+        ${pitchHtml}
+      </div>
+    </div>`;
 }
 
 async function openPitchView(managerId){
@@ -3749,7 +4086,13 @@ document.getElementById("pv-compare-btn").addEventListener("click", () => {
     return;
   }
   const list = document.getElementById("compare-list");
-  list.innerHTML = managers.filter(m=>m.id!==pvCurrentManagerId).map(m => `
+  // TOTW appears at the top of the picker as a special option
+  const totwOpt = `
+    <div class="compare-opt" data-id="totw" style="border-bottom:1px solid var(--line);margin-bottom:6px;padding-bottom:8px;">
+      <div class="av" style="background:linear-gradient(135deg,#FFD700,#FFA500);color:#000;font-size:14px;">⭐</div>
+      <div><div style="font-weight:700">FPL Team of the Week</div><div style="font-size:10px;color:var(--muted)">Official FPL dream team · GW${GW_COUNT}</div></div>
+    </div>`;
+  list.innerHTML = totwOpt + managers.filter(m=>m.id!==pvCurrentManagerId).map(m => `
     <div class="compare-opt" data-id="${m.id}">
       <div class="av ${managerClubs[m.id]?'has-crest':''}">${managerClubs[m.id] ? crestSvg(managerClubs[m.id],'cmp'+m.id) : initials(m.teamName)}</div>
       <div>${m.teamName}</div>
@@ -3760,7 +4103,7 @@ document.getElementById("pv-compare-btn").addEventListener("click", () => {
 document.getElementById("compare-overlay").addEventListener("click", (e) => {
   if(e.target.id === "compare-overlay"){ document.getElementById("compare-overlay").classList.add("hidden"); return; }
   const opt = e.target.closest(".compare-opt"); if(!opt) return;
-  pvCompareManagerId = parseInt(opt.dataset.id);
+  pvCompareManagerId = opt.dataset.id === "totw" ? "totw" : parseInt(opt.dataset.id);
   pvCompareMode = true;
   document.getElementById("pv-compare-btn").classList.add("active");
   document.getElementById("compare-overlay").classList.add("hidden");
@@ -3882,6 +4225,8 @@ async function boot(){
   safeRender(renderTemplateDifferential, "renderTemplateDifferential");
   safeRender(renderHighlights, "renderHighlights");
   safeRender(renderAutopsyCard, "renderAutopsyCard");
+  safeRender(renderTOTW, "renderTOTW");
+  initInsightFilter();
   safeRender(renderTransferShamingCard, "renderTransferShamingCard");
   safeRender(renderBingoCard, "renderBingoCard");
   safeRender(renderManagerDNA, "renderManagerDNA");
@@ -3889,6 +4234,11 @@ async function boot(){
   safeRender(renderFplIQ, "renderFplIQ");
   safeRender(renderGotAway, "renderGotAway");
   safeRender(renderFplCourt, "renderFplCourt");
+  safeRender(renderDifferentialDanger, "renderDifferentialDanger");
+  safeRender(renderPressConference, "renderPressConference");
+  safeRender(renderLostPoints, "renderLostPoints");
+  safeRender(renderTransferLab, "renderTransferLab");
+  safeRender(renderWhoCopiedWho, "renderWhoCopiedWho");
 
   renderDeadline();
   setInterval(renderDeadline, 1000);
@@ -3951,6 +4301,11 @@ async function boot(){
       safeRender(renderFplIQ, "renderFplIQ (live refresh)");
       safeRender(renderGotAway, "renderGotAway (live refresh)");
       safeRender(renderFplCourt, "renderFplCourt (live refresh)");
+      safeRender(renderDifferentialDanger, "renderDifferentialDanger (live refresh)");
+      safeRender(renderPressConference, "renderPressConference (live refresh)");
+      safeRender(renderLostPoints, "renderLostPoints (live refresh)");
+      safeRender(renderTransferLab, "renderTransferLab (live refresh)");
+      safeRender(renderWhoCopiedWho, "renderWhoCopiedWho (live refresh)");
       safeRender(renderPrize, "renderPrize (live refresh)");
       safeRender(renderTransferActivity, "renderTransferActivity (live refresh)"); // this is the whole point pre-deadline — transfers change minute to minute
       if(IS_FINAL) clearInterval(liveRefresh); // fully settled — stop polling
