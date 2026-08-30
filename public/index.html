@@ -122,6 +122,10 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .new-badge{font-family:var(--font-m);font-size:9px;font-weight:800;background:var(--grad);color:#0D0715;padding:2px 7px;border-radius:8px;letter-spacing:.04em;cursor:pointer;animation:newPulse 1.6s ease-in-out infinite;}
 @keyframes newPulse{0%,100%{opacity:1;}50%{opacity:.55;}}
 .admin-note-live{background:rgba(255,210,63,.1);border:1px solid rgba(255,210,63,.3);border-radius:10px;padding:9px 11px;font-size:11px;color:var(--gold);margin-top:10px;line-height:1.5;}
+.autopsy-card{margin-bottom:14px;}
+.autopsy-text{margin-top:10px;font-size:12.5px;line-height:1.65;color:var(--text);}
+.autopsy-text p{margin:0 0 10px;}
+.autopsy-text p:last-child{margin-bottom:0;}
 .section-title .bar{width:3px;height:14px;background:var(--grad);border-radius:2px;}
 
 .row{display:flex;align-items:center;gap:12px;background:var(--panel-glass);backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);border:1px solid var(--line);border-radius:var(--radius);padding:11px 12px;margin-bottom:8px;cursor:pointer;opacity:0;transform:translateY(8px);animation:rowIn .4s ease forwards;}
@@ -627,6 +631,7 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
   <div id="view-table" class="view active">
     <div class="section-title"><span class="bar"></span>This Week's Highlights</div>
     <div class="highlights-grid" id="highlights"></div>
+    <div id="autopsy-card-wrap"></div>
     <div class="section-title"><span class="bar"></span><span id="table-title">Overall Standings</span></div>
     <div class="table-split" id="table-split">
       <div class="table-col-standings" id="table-col-standings">
@@ -950,6 +955,11 @@ async function getLatestSquadsRollup(){
 }
 
 function initials(n){ return n.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase(); }
+function escapeHtml(s){
+  const div = document.createElement("div");
+  div.textContent = s;
+  return div.innerHTML;
+}
 
 // ---------- Cloudinary uploads (no Firebase Storage — see README for why) ----------
 const CLOUDINARY_CLOUD = "mv8ldtmt";
@@ -1361,6 +1371,25 @@ function renderHeroStats(){
 }
 
 // ---------- Landing highlights strip ----------
+// ---------- The Autopsy — AI-generated gameweek recap (GW3+, once bonus points confirmed) ----------
+async function renderAutopsyCard(){
+  const wrap = document.getElementById("autopsy-card-wrap");
+  if(!featureUnlocked('autopsy') || !GW_COUNT){ wrap.innerHTML = ""; return; }
+  const snap = await getDoc(doc(db, `autopsyReports/gw${GW_COUNT}`));
+  if(!snap.exists()){
+    wrap.innerHTML = `<div class="kpi-card autopsy-card"><h3>📰 The Autopsy</h3><div class="sub">Still writing this week's story — check back shortly.</div></div>`;
+    return;
+  }
+  const data = snap.data();
+  const paragraphs = data.text.split(/\n\n+/).map(p => `<p>${escapeHtml(p)}</p>`).join("");
+  wrap.innerHTML = `
+    <div class="kpi-card autopsy-card">
+      <h3>📰 The Autopsy ${newBadgeHtml('autopsy')}</h3>
+      <div class="sub">Gameweek ${data.gw} recap</div>
+      <div class="autopsy-text">${paragraphs}</div>
+    </div>`;
+}
+
 function renderHighlights(){
   const awards = computeAwards();
   const spotlight = GW_COUNT ? awards[Math.floor(Math.random()*awards.length)] : null;
@@ -2015,10 +2044,12 @@ function renderAdminFeatureControlTab(){
     const val = e.target.value.trim();
     previewGwOverride = val === "" ? null : Math.max(1, Math.min(38, parseInt(val)||1));
     renderAdminFeatureControlTab();
+    safeRender(renderAutopsyCard, "renderAutopsyCard (preview)");
   });
   document.getElementById("preview-gw-clear").addEventListener("click", () => {
     previewGwOverride = null;
     renderAdminFeatureControlTab();
+    safeRender(renderAutopsyCard, "renderAutopsyCard (preview)");
   });
   document.querySelectorAll(".feature-override-select").forEach(sel => {
     sel.addEventListener("change", async () => {
@@ -2030,6 +2061,7 @@ function renderAdminFeatureControlTab(){
       await setDoc(doc(db, "adminConfig/featureOverrides"), { overrides: featureOverrides });
       showToast(`${FEATURE_REGISTRY[id].title} — ${state === 'default' ? 'back to automatic' : state === 'forceOn' ? 'forced ON for everyone' : 'forced OFF for everyone'}`);
       renderAdminFeatureControlTab();
+      safeRender(renderAutopsyCard, "renderAutopsyCard (override)");
     });
   });
 }
@@ -3423,6 +3455,7 @@ async function boot(){
   safeRender(renderCaptaincyReport, "renderCaptaincyReport");
   safeRender(renderTemplateDifferential, "renderTemplateDifferential");
   safeRender(renderHighlights, "renderHighlights");
+  safeRender(renderAutopsyCard, "renderAutopsyCard");
 
   renderDeadline();
   setInterval(renderDeadline, 1000);
@@ -3477,6 +3510,7 @@ async function boot(){
       safeRender(renderLeagueHeader, "renderLeagueHeader (live refresh)");
       safeRender(renderAll, "renderAll (live refresh)");
       safeRender(renderHighlights, "renderHighlights (live refresh)");
+      safeRender(renderAutopsyCard, "renderAutopsyCard (live refresh)");
       safeRender(renderPrize, "renderPrize (live refresh)");
       safeRender(renderTransferActivity, "renderTransferActivity (live refresh)"); // this is the whole point pre-deadline — transfers change minute to minute
       if(IS_FINAL) clearInterval(liveRefresh); // fully settled — stop polling
