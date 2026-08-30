@@ -535,6 +535,92 @@ async function main() {
     });
   }
 
+  // GW Bingo — compute which squares each manager hit this gameweek.
+  // The 24 non-free squares are defined once; each manager gets a
+  // deterministically shuffled card (seeded by entryId × gw so it's
+  // always the same card for that person, just different from their
+  // neighbours'). Ghost team scores read from the block computed above.
+  const ghostSnap = await db.doc(`ghostTeams/gw${gw}`).get();
+  const ghostData = ghostSnap.exists ? ghostSnap.data() : null;
+  const gwWinnerPoints = gwWinner?.gwPoints || 0;
+
+  const BINGO_SQUARES = [
+    { id:"captain_blank",    check:(r,sq) => { const cap = sq.starting.find(id=>id===r.capElement); return cap && (livePointsByElement[cap]||0) < 4; } },
+    { id:"haul_15",          check:(r,sq) => sq.starting.some(id=>(livePointsByElement[id]||0)>=15) },
+    { id:"bench_beats",      check:(r)    => r.benchPoints > r.gwPoints - r.benchPoints },
+    { id:"hit_scores",       check:(r,sq) => r.transferCost>0 && sq.starting.some(id=>(livePointsByElement[id]||0)>=8) },
+    { id:"win_gw",           check:(r)    => r.gwPoints===gwWinnerPoints && gwWinnerPoints>0 },
+    { id:"no_transfers",     check:(r)    => r.transfers===0 },
+    { id:"under_avg",        check:(r)    => r.gwPoints < avgPoints - 2 },
+    { id:"diff_scores",      check:(r,sq) => sq.starting.some(id=>{ const oc=ownershipCount[id]||0; return oc<=2 && (livePointsByElement[id]||0)>=10; }) },
+    { id:"best_on_bench",    check:(r,sq) => { const benchMax=sq.bench.reduce((m,id)=>Math.max(m,livePointsByElement[id]||0),0); const startMin=sq.starting.reduce((m,id)=>Math.min(m,livePointsByElement[id]||0),99); return benchMax>startMin; } },
+    { id:"chip_played",      check:(r)    => !!r.chip },
+    { id:"algorithm_beats",  check:(r)    => ghostData && r.gwPoints<(ghostData.algorithm?.points||0) },
+    { id:"robot_beats",      check:(r)    => ghostData && r.gwPoints<(ghostData.robot?.points||0) },
+    { id:"madman_beats",     check:(r)    => ghostData && r.gwPoints<(ghostData.madman?.points||0) },
+    { id:"top_scorer",       check:(r)    => r.gwPoints===gwWinnerPoints && gwWinnerPoints>0 },
+    { id:"under_30",         check:(r)    => r.gwPoints<30 },
+    { id:"hattrick",         check:(r,sq) => sq.starting.some(id=>(liveStatsByElement[id]?.goals||0)>=3) },
+    { id:"triple_captain",   check:(r)    => r.chip==="3xc" },
+    { id:"big_hit",          check:(r)    => r.transferCost>=8 },
+    { id:"clean_sheet",      check:(r,sq) => sq.starting.some(id=>{ const p=players.get(id); return p&&[1,2].includes(p.element_type)&&(liveStatsByElement[id]?.cleanSheet||0)>0; }) },
+    { id:"on_avg",           check:(r)    => Math.abs(r.gwPoints-avgPoints)<=1 },
+    { id:"captain_wins",     check:(r,sq) => { const capPts=(livePointsByElement[r.capElement]||0)*2; return gwResults.filter(x=>x.entryId!==r.entryId).every(x=>{ const xCap=gwSquadsRollup[x.entryId]?.captain; return capPts>=(livePointsByElement[xCap]||0)*2; }); } },
+    { id:"climb_5",          check:(r)    => { const prev=r.prevRank; return prev&&r.currentRank&&(prev-r.currentRank)>=5; } },
+    { id:"top_3",            check:(r)    => r.currentRank<=3 },
+    { id:"score_over_70",    check:(r)    => r.gwPoints>=70 },
+  ];
+
+  // Seeded shuffle: consistent card for the same manager+GW, different from others
+  function seededShuffle(arr, seed) {
+    const a = [...arr];
+    let s = seed;
+    for (let i = a.length-1; i>0; i--) {
+      s = (s * 1664525 + 1013904223) & 0xffffffff;
+      const j = Math.abs(s) % (i+1);
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  const BINGO_LINES = [
+    [0,1,2,3,4],[5,6,7,8,9],[10,11,12,13,14],[15,16,17,18,19],[20,21,22,23,24],
+    [0,5,10,15,20],[1,6,11,16,21],[2,7,12,17,22],[3,8,13,18,23],[4,9,14,19,24],
+    [0,6,12,18,24],[4,8,12,16,20],
+  ];
+
+  const bingoWrites = [];
+  for (const r of gwResults) {
+    const squad = gwSquadsRollup[r.entryId];
+    if (!squad) continue;
+    const augmented = { ...r, capElement: squad.captain, currentRank: managers.find(m=>m.entryId===r.entryId)?.currentRank||99, prevRank: null };
+    const seed = (r.entryId * 31 + gw * 997) | 0;
+    const shuffled = seededShuffle(BINGO_SQUARES, seed);
+    // Build 5×5: indices 0-11 are shuffled squares, 12 is FREE, 13-24 continue
+    const card = [...shuffled.slice(0,12), null, ...shuffled.slice(12,24)];
+    const hits = card.map((sq, i) => {
+      if (i===12) return true; // FREE
+      if (!sq) return false;
+      try { return !!sq.check(augmented, squad); } catch(e) { return false; }
+    });
+    const bingoLines = BINGO_LINES.filter(line=>line.every(i=>hits[i])).length;
+    bingoWrites.push(db.doc(`gwBingo/gw${gw}_${r.entryId}`).set({
+      gw, entryId: r.entryId, teamName: r.teamName,
+      card: card.map(sq=>sq?.id||"free"),
+      hits,
+      bingoCount: bingoLines,
+      syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }));
+  }
+  if (bingoWrites.length > 0) {
+    await Promise.all(bingoWrites);
+    console.log(`GW Bingo computed for ${bingoWrites.length} managers`);
+  }
+
+  // Manager DNA — classify each manager's playing style from their season-long
+  // decisions. Runs every sync, scores update as more data accumulates.
+  await computeManagerDNA(managers, gw);
+
   // AI-generated gameweek recap ("The Autopsy") — same reasoning as
   // mwWinners above: only once bonus points are confirmed, so the story
   // isn't narrated off numbers that could still shift.
@@ -583,6 +669,59 @@ Facts:
     generatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
   console.log(`Autopsy generated for GW${gw} (${text.length} chars)`);
+}
+
+// Manager DNA — classifies each manager's season-long playing style from
+// their actual decisions. Scores 5 traits (0-100 each) and picks the
+// dominant archetype. Needs at least 3 gameweeks of data to be meaningful.
+async function computeManagerDNA(allManagers, currentGw) {
+  if (currentGw < 3) return; // not enough history to say anything meaningful
+  const writes = [];
+  for (const m of allManagers) {
+    if (!m.history || m.history.length < 2) continue;
+    const history = m.history.filter(h => h.gw <= currentGw);
+    const gwCount = history.length;
+    // Gambler: high hit rate
+    const totalHits = history.reduce((s,h) => s+(h.transferCost||0), 0);
+    const hitRate = totalHits / gwCount;
+    const gamblerScore = Math.min(100, Math.round(hitRate * 12.5));
+    // Template: low transfer activity (set & forget style)
+    const totalTransfers = history.reduce((s,h) => s+(h.transfers||0), 0);
+    const templateScore = Math.max(0, 100 - Math.round((totalTransfers/gwCount)*25));
+    // Consistent: low variance in scores
+    const scores = history.map(h=>h.points||0);
+    const mean = scores.reduce((s,v)=>s+v,0)/scores.length;
+    const variance = scores.reduce((s,v)=>s+Math.pow(v-mean,2),0)/scores.length;
+    const stdDev = Math.sqrt(variance);
+    const consistencyScore = Math.max(0, 100 - Math.round(stdDev*2.5));
+    // Clutch: scores above league average in high-stakes weeks (approximated by rank improvement)
+    const rankImprovements = history.filter((h,i)=>i>0&&h.rank<history[i-1].rank).length;
+    const clutchScore = Math.round((rankImprovements/Math.max(gwCount-1,1))*100);
+    // Differential: approximated by transfer activity + high single-week peaks
+    const peakScore = Math.max(...scores);
+    const differentialScore = Math.min(100, Math.round((peakScore/100)*50 + (totalTransfers/gwCount)*10));
+
+    const traits = { gambler: gamblerScore, template: templateScore, consistent: consistencyScore, clutch: clutchScore, differential: differentialScore };
+    const topTrait = Object.entries(traits).sort((a,b)=>b[1]-a[1])[0][0];
+    const ARCHETYPES = {
+      gambler: "🎲 Gambler",
+      template: "📋 Set & Forget",
+      consistent: "🪨 Steady Eddie",
+      clutch: "⚡ Clutch Player",
+      differential: "🦄 Contrarian",
+    };
+    writes.push(db.doc(`managerDNA/${m.entryId}`).set({
+      entryId: m.entryId,
+      teamName: m.entry_name || m.teamName,
+      archetype: ARCHETYPES[topTrait],
+      traits,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }));
+  }
+  if (writes.length > 0) {
+    await Promise.all(writes);
+    console.log(`Manager DNA computed for ${writes.length} managers`);
+  }
 }
 
 main().catch((err) => {
