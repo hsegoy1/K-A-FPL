@@ -126,6 +126,15 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .autopsy-text{margin-top:10px;font-size:12.5px;line-height:1.65;color:var(--text);}
 .autopsy-text p{margin:0 0 10px;}
 .autopsy-text p:last-child{margin-bottom:0;}
+.shame-card{margin-bottom:14px;}
+.shame-spotlight{font-size:12.5px;line-height:1.5;background:rgba(255,77,109,.08);border:1px solid rgba(255,77,109,.25);border-radius:10px;padding:10px 12px;margin:10px 0;}
+.shame-ticker{display:flex;flex-direction:column;gap:2px;}
+.shame-row{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:11.5px;border-bottom:1px solid var(--line);}
+.shame-row:last-child{border-bottom:none;}
+.shame-row .n{width:16px;color:var(--muted);font-family:var(--font-m);flex-shrink:0;}
+.shame-row .t{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.shame-row .v{font-family:var(--font-m);color:var(--red);font-weight:700;flex-shrink:0;}
+.fx-weather{font-size:10px;}
 .section-title .bar{width:3px;height:14px;background:var(--grad);border-radius:2px;}
 
 .row{display:flex;align-items:center;gap:12px;background:var(--panel-glass);backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);border:1px solid var(--line);border-radius:var(--radius);padding:11px 12px;margin-bottom:8px;cursor:pointer;opacity:0;transform:translateY(8px);animation:rowIn .4s ease forwards;}
@@ -632,6 +641,7 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
     <div class="section-title"><span class="bar"></span>This Week's Highlights</div>
     <div class="highlights-grid" id="highlights"></div>
     <div id="autopsy-card-wrap"></div>
+    <div id="transfer-shaming-wrap"></div>
     <div class="section-title"><span class="bar"></span><span id="table-title">Overall Standings</span></div>
     <div class="table-split" id="table-split">
       <div class="table-col-standings" id="table-col-standings">
@@ -1390,6 +1400,27 @@ async function renderAutopsyCard(){
     </div>`;
 }
 
+// ---------- Transfer Shaming — a hall-of-shame for reckless hit-taking, season-long ----------
+function renderTransferShamingCard(){
+  const wrap = document.getElementById("transfer-shaming-wrap");
+  if(!featureUnlocked('transferShaming') || managers.length === 0){ wrap.innerHTML = ""; return; }
+  const withHits = managers
+    .map(m => ({ m, totalHits: m.history.reduce((s,h) => s + (h.transferCost||0), 0) }))
+    .filter(x => x.totalHits > 0)
+    .sort((a,b) => b.totalHits - a.totalHits);
+  if(withHits.length === 0){ wrap.innerHTML = ""; return; }
+  const worst = withHits[0];
+  wrap.innerHTML = `
+    <div class="kpi-card shame-card">
+      <h3>🫠 Transfer Shaming ${newBadgeHtml('transferShaming')}</h3>
+      <div class="sub">Total points burned on transfer hits this season</div>
+      <div class="shame-spotlight"><b>${worst.m.teamName}</b> has spent <b>${worst.totalHits}</b> points on hits this season — that's ${Math.floor(worst.totalHits/4)} free transfer${Math.floor(worst.totalHits/4)===1?'':'s'} worth, gone.</div>
+      <div class="shame-ticker">
+        ${withHits.slice(0,6).map((x,i) => `<div class="shame-row"><span class="n">${i+1}</span><span class="t">${x.m.teamName}</span><span class="v">-${x.totalHits}</span></div>`).join("")}
+      </div>
+    </div>`;
+}
+
 function renderHighlights(){
   const awards = computeAwards();
   const spotlight = GW_COUNT ? awards[Math.floor(Math.random()*awards.length)] : null;
@@ -2045,11 +2076,15 @@ function renderAdminFeatureControlTab(){
     previewGwOverride = val === "" ? null : Math.max(1, Math.min(38, parseInt(val)||1));
     renderAdminFeatureControlTab();
     safeRender(renderAutopsyCard, "renderAutopsyCard (preview)");
+    safeRender(renderTransferShamingCard, "renderTransferShamingCard (preview)");
+    safeRender(renderFixtures, "renderFixtures (preview)", fixturesViewGw);
   });
   document.getElementById("preview-gw-clear").addEventListener("click", () => {
     previewGwOverride = null;
     renderAdminFeatureControlTab();
     safeRender(renderAutopsyCard, "renderAutopsyCard (preview)");
+    safeRender(renderTransferShamingCard, "renderTransferShamingCard (preview)");
+    safeRender(renderFixtures, "renderFixtures (preview)", fixturesViewGw);
   });
   document.querySelectorAll(".feature-override-select").forEach(sel => {
     sel.addEventListener("change", async () => {
@@ -2062,6 +2097,8 @@ function renderAdminFeatureControlTab(){
       showToast(`${FEATURE_REGISTRY[id].title} — ${state === 'default' ? 'back to automatic' : state === 'forceOn' ? 'forced ON for everyone' : 'forced OFF for everyone'}`);
       renderAdminFeatureControlTab();
       safeRender(renderAutopsyCard, "renderAutopsyCard (override)");
+      safeRender(renderTransferShamingCard, "renderTransferShamingCard (override)");
+      safeRender(renderFixtures, "renderFixtures (override)", fixturesViewGw);
     });
   });
 }
@@ -2180,10 +2217,33 @@ async function getFixturesForGw(gw){
   return snap.exists() ? (snap.data().fixtures || []) : [];
 }
 const GOAL_POINTS = { GKP:6, DEF:6, MID:5, FWD:4 };
+// ---------- Fixture Weather — pre-match risk icons based on FPL's own team strength ratings ----------
+let teamStrengthData = null;
+async function getTeamStrengthData(){
+  if(teamStrengthData) return teamStrengthData;
+  const snap = await getDoc(doc(db, "teamsMeta/strength"));
+  teamStrengthData = snap.exists() ? (snap.data().teams || {}) : {};
+  return teamStrengthData;
+}
+function getFixtureWeather(strengthData, homeCode, awayCode){
+  const h = strengthData[homeCode], a = strengthData[awayCode];
+  if(!h || !a) return null;
+  const diff = h.overallHome - a.overallAway;
+  const combinedAttack = h.attackHome + a.attackAway;
+  if(Math.abs(diff) > 250) return { icon: "🔥", label: "Blowout risk" };
+  if(diff < -50) return { icon: "⚠️", label: "Upset alert" };
+  if(combinedAttack < 2150) return { icon: "🧊", label: "Low-scoring likely" };
+  return null;
+}
+
 async function renderFixtures(gw){
   const el = document.getElementById("fixtures-list");
   el.innerHTML = `<div class="sub" style="padding:14px;">Loading…</div>`;
-  const fixtures = await getFixturesForGw(gw);
+  const weatherOn = featureUnlocked('fixtureWeather');
+  const [fixtures, strengthData] = await Promise.all([
+    getFixturesForGw(gw),
+    weatherOn ? getTeamStrengthData() : Promise.resolve(null),
+  ]);
   if(fixtures.length === 0){
     el.innerHTML = `<div class="sub" style="padding:14px;">No fixtures synced for GW${gw} yet.</div>`;
     return;
@@ -2203,10 +2263,12 @@ async function renderFixtures(gw){
     const mid = f.finished
       ? `${f.homeScore} - ${f.awayScore}`
       : fmtNPT(kickoffDate, {hour:'numeric', minute:'2-digit'});
+    // Weather only makes sense pre-match — a finished game already has its answer
+    const weather = (weatherOn && !f.finished) ? getFixtureWeather(strengthData, f.home, f.away) : null;
     rows.push(`
     <div class="fixture-row" data-idx="${i}">
       <div class="fx-team home"><div class="fx-badge">${crestSvg(f.home, 'fxh'+fUid)}</div><span class="code">${f.home}</span></div>
-      <div class="fx-mid ${f.finished?'':'upcoming'}">${mid}</div>
+      <div class="fx-mid ${f.finished?'':'upcoming'}">${weather ? `<span class="fx-weather" title="${weather.label}">${weather.icon}</span> ` : ''}${mid}</div>
       <div class="fx-team away"><div class="fx-badge">${crestSvg(f.away, 'fxa'+fUid)}</div><span class="code">${f.away}</span></div>
     </div>`);
   });
@@ -3419,9 +3481,9 @@ function renderAll(){ renderHeroStats(); renderStandings(); }
 // it — wrap every independent section so a failure in one (bad data for a
 // single manager, an edge case we didn't anticipate) can't silently prevent
 // everything queued after it from ever running.
-function safeRender(fn, label){
+function safeRender(fn, label, ...args){
   try {
-    const result = fn();
+    const result = fn(...args);
     if(result && typeof result.catch === "function"){
       result.catch(err => console.error(`Render failed: ${label}`, err));
     }
@@ -3456,6 +3518,7 @@ async function boot(){
   safeRender(renderTemplateDifferential, "renderTemplateDifferential");
   safeRender(renderHighlights, "renderHighlights");
   safeRender(renderAutopsyCard, "renderAutopsyCard");
+  safeRender(renderTransferShamingCard, "renderTransferShamingCard");
 
   renderDeadline();
   setInterval(renderDeadline, 1000);
@@ -3511,6 +3574,7 @@ async function boot(){
       safeRender(renderAll, "renderAll (live refresh)");
       safeRender(renderHighlights, "renderHighlights (live refresh)");
       safeRender(renderAutopsyCard, "renderAutopsyCard (live refresh)");
+      safeRender(renderTransferShamingCard, "renderTransferShamingCard (live refresh)");
       safeRender(renderPrize, "renderPrize (live refresh)");
       safeRender(renderTransferActivity, "renderTransferActivity (live refresh)"); // this is the whole point pre-deadline — transfers change minute to minute
       if(IS_FINAL) clearInterval(liveRefresh); // fully settled — stop polling
