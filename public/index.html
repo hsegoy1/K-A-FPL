@@ -1293,7 +1293,7 @@ const FEATURE_REGISTRY = {
   transferHallOfShame: { title: "Transfer Hall of Shame",minGW: 12, category: "meta" },
   oneThatGotAway:  { title: "The One That Got Away",     minGW: 15, category: "meta" },
   efficiencyLeague:{ title: "Efficiency League",         minGW: 18, category: "meta" },
-  fplIQ:           { title: "FPL IQ",                    minGW: 15, category: "meta" },
+  fplIQ:           { title: "FPL IQ",                    minGW: 1,  category: "meta" },
   seasonMeta:      { title: "Tactical Meta",             minGW: 15, category: "meta" },
   liveCommentary:  { title: "Live Commentary",           minGW: 20, category: "live" },
 };
@@ -1749,7 +1749,7 @@ async function renderFplIQ(){
   const me=managers.find(m=>m.teamName===ident.team);
   if(!me){ el.innerHTML=`<div class="sub">Pick your identity first.</div>`; return; }
   const snap=await getDoc(doc(db,`fplIQ/${me.id}`));
-  if(!snap.exists()){ el.innerHTML=`<div class="sub">FPL IQ unlocks after GW5.</div>`; return; }
+  if(!snap.exists()){ el.innerHTML=`<div class="sub">FPL IQ computing — check back after the next sync.</div>`; return; }
   const d=snap.data();
   const LABELS={hitIQ:"Hit Control",consistencyIQ:"Consistency",benchIQ:"Bench Mgmt",relativeIQ:"vs Field"};
   el.innerHTML=`
@@ -1829,6 +1829,7 @@ async function renderFplCourt(){
 }
 
 // ---------- Differential Danger (GW6) ----------
+let diffDangerData = {}; // cached for the click handler below
 async function renderDifferentialDanger(){
   const el=document.getElementById("diffdanger-display");
   document.getElementById("diffdanger-badge").innerHTML=newBadgeHtml('diffDanger');
@@ -1840,21 +1841,37 @@ async function renderDifferentialDanger(){
   if(!squadsSnap.exists()){ el.innerHTML=`<div class="sub">No squad data yet.</div>`; return; }
   const entries=Object.values(squadsSnap.data().entries||{});
   const pts=ptsSnap.exists()?ptsSnap.data().points||{}:{};
-  const ownership={};
-  entries.forEach(e=>[...e.starting,...e.bench].forEach(id=>{ownership[id]=(ownership[id]||0)+1;}));
+  const ownership={}; // id -> [teamName, ...]
+  entries.forEach(e=>[...e.starting,...e.bench].forEach(id=>{
+    if(!ownership[id]) ownership[id]=[];
+    ownership[id].push(e.teamName);
+  }));
   const differentials=Object.entries(ownership)
-    .filter(([,count])=>count>=1&&count<=3)
-    .map(([id,count])=>({ id:parseInt(id), count, pts:pts[id]||0, info:playerInfo(parseInt(id)) }))
+    .filter(([,owners])=>owners.length>=1&&owners.length<=3)
+    .map(([id,owners])=>({ id:parseInt(id), owners, pts:pts[id]||0, info:playerInfo(parseInt(id)) }))
     .filter(x=>x.pts>=8)
     .sort((a,b)=>b.pts-a.pts)
     .slice(0,6);
+  diffDangerData = {}; // reset the click-lookup cache each render
+  differentials.forEach(d=>{ diffDangerData[d.id]=d; });
   if(!differentials.length){ el.innerHTML=`<div class="sub">No differentials scored 8+ this GW.</div>`; return; }
   el.innerHTML=differentials.map(d=>`
-    <div class="diffdanger-row">
+    <div class="diffdanger-row" data-id="${d.id}" style="cursor:pointer;">
       <div><div class="dplayer">${d.info.n}</div><div class="dteam">${d.info.team} · ${d.info.pos}</div></div>
-      <div class="downs">${d.count} owner${d.count>1?'s':''}</div>
+      <div class="downs">${d.owners.length} owner${d.owners.length>1?'s':''}</div>
       <div class="dlastpts">GW${GW_COUNT}: ${d.pts} pts</div>
     </div>`).join("");
+  el.querySelectorAll(".diffdanger-row").forEach(row=>{
+    row.addEventListener("click", ()=>{
+      const d = diffDangerData[row.dataset.id];
+      if(!d) return;
+      openSheet(`
+        <div class="squad-header"><div style="font-size:22px">🦄</div><div><h2>${d.info.n}</h2><p>${d.info.team} · ${d.info.pos} · GW${GW_COUNT}: ${d.pts} pts</p></div></div>
+        <div class="sub" style="margin-bottom:8px;">Owned by ${d.owners.length} manager${d.owners.length>1?'s':''} in the league:</div>
+        ${d.owners.map(t=>`<div class="mini-rank-row"><span class="t">${t}</span></div>`).join("")}
+      `);
+    });
+  });
 }
 
 // ---------- Press Conference (GW7) ----------
@@ -1943,16 +1960,20 @@ async function renderWhoCopiedWho(){
   const snap=await getDoc(doc(db,`gameweekTransfers/gw${GW_COUNT}`));
   if(!snap.exists()){ el.innerHTML=`<div class="sub">No transfers this GW yet.</div>`; return; }
   const entries=snap.data().entries||{};
+  // Use a Set per player, not an array — guarantees each manager can only
+  // ever appear once in a given player's buyer list, even if the underlying
+  // per-manager transfersIn data has any duplicate element IDs in it.
   const playerBuyers={};
   Object.values(entries).forEach(e=>{
-    (e.transfersIn||[]).forEach(id=>{
-      if(!playerBuyers[id]) playerBuyers[id]=[];
-      playerBuyers[id].push(e.teamName);
+    const uniqueIn=[...new Set(e.transfersIn||[])];
+    uniqueIn.forEach(id=>{
+      if(!playerBuyers[id]) playerBuyers[id]=new Set();
+      playerBuyers[id].add(e.teamName);
     });
   });
   const groups=Object.entries(playerBuyers)
-    .filter(([,teams])=>teams.length>=2)
-    .map(([id,teams])=>({info:playerInfo(parseInt(id)),teams}))
+    .map(([id,teamSet])=>({info:playerInfo(parseInt(id)),teams:[...teamSet]}))
+    .filter(g=>g.teams.length>=2)
     .sort((a,b)=>b.teams.length-a.teams.length);
   if(!groups.length){ el.innerHTML=`<div class="sub">No identical transfers this GW — everyone's an individual.</div>`; return; }
   el.innerHTML=groups.map(g=>`
@@ -3332,7 +3353,7 @@ async function renderFormationTrends(){
 function rankedDetailRows(rankedManagers, valueFn, unit){
   return rankedManagers.map((m,i) => `<div class="top5-row"><div class="n">${i+1}</div><div class="t">${m.teamName}</div><div class="v">${valueFn(m)} ${unit}</div></div>`).join("");
 }
-document.getElementById("view-insights").addEventListener("click", async (e) => {
+document.addEventListener("click", async (e) => {
   const card = e.target.closest(".kpi-card.clickable"); if(!card) return;
   const type = card.dataset.detail;
   const S = seasonStats();
