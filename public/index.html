@@ -135,6 +135,26 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .shame-row .t{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .shame-row .v{font-family:var(--font-m);color:var(--red);font-weight:700;flex-shrink:0;}
 .fx-weather{font-size:10px;}
+.bingo-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:10px;}
+.bingo-cell{background:var(--panel-glass);border:1px solid var(--line);border-radius:8px;padding:6px 3px;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-size:8.5px;color:var(--muted);line-height:1.3;transition:background .15s;}
+.bingo-cell.hit{background:rgba(57,255,136,.12);border-color:rgba(57,255,136,.4);color:var(--green);}
+.bingo-cell.bingo-line{background:rgba(0,229,255,.12);border-color:rgba(0,229,255,.4);color:var(--accent2);}
+.bingo-cell.free{background:rgba(255,46,146,.12);border-color:rgba(255,46,146,.4);color:var(--accent1);font-weight:700;}
+.bingo-cell-icon{font-size:14px;margin-bottom:2px;}
+.bingo-banner{background:rgba(0,229,255,.1);border:1px solid rgba(0,229,255,.3);border-radius:10px;padding:8px 12px;text-align:center;margin-top:10px;font-family:var(--font-m);font-size:12px;color:var(--accent2);font-weight:700;}
+.dna-archetype{font-size:22px;font-weight:700;font-family:var(--font-d);margin-bottom:6px;}
+.dna-traits{display:flex;flex-direction:column;gap:6px;margin-top:8px;}
+.dna-trait-row{display:flex;align-items:center;gap:8px;font-size:11px;}
+.dna-trait-row .tname{width:80px;color:var(--muted);flex-shrink:0;}
+.dna-bar-bg{flex:1;height:6px;background:var(--line);border-radius:3px;overflow:hidden;}
+.dna-bar-fill{height:100%;background:var(--grad);border-radius:3px;}
+.dna-trait-row .tscore{width:28px;text-align:right;font-family:var(--font-m);color:var(--accent2);font-size:10px;flex-shrink:0;}
+.derby-vs{display:flex;align-items:center;gap:12px;margin-top:10px;}
+.derby-side{flex:1;text-align:center;}
+.derby-side .dname{font-weight:700;font-size:13px;}
+.derby-side .dscore{font-family:var(--font-m);font-size:22px;color:var(--accent2);}
+.derby-mid{color:var(--muted);font-size:11px;font-family:var(--font-m);}
+.derby-stat{font-size:11px;color:var(--muted);text-align:center;margin-top:6px;}
 .section-title .bar{width:3px;height:14px;background:var(--grad);border-radius:2px;}
 
 .row{display:flex;align-items:center;gap:12px;background:var(--panel-glass);backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);border:1px solid var(--line);border-radius:var(--radius);padding:11px 12px;margin-bottom:8px;cursor:pointer;opacity:0;transform:translateY(8px);animation:rowIn .4s ease forwards;}
@@ -798,6 +818,33 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
         <div class="sub" id="diff-sub"></div>
       </div>
     </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>GW Bingo <span id="bingo-new-badge"></span></div>
+      <div class="kpi-card" id="bingo-card-wrap">
+        <h3>Your bingo card this gameweek</h3>
+        <div class="sub">Squares auto-tick from real FPL data. Complete a line and the league gets notified.</div>
+        <div id="bingo-grid-container"></div>
+      </div>
+    </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Manager DNA <span id="dna-new-badge"></span></div>
+      <div class="kpi-card clickable" data-detail="dna">
+        <h3>Your playing style this season</h3>
+        <div id="dna-display"></div>
+        <div class="tap-more">tap to see everyone's DNA →</div>
+      </div>
+    </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>H2H Derby <span id="derby-new-badge"></span></div>
+      <div class="kpi-card" id="derby-card">
+        <h3>Your personal rival this season</h3>
+        <div class="sub">The manager whose score tracks closest to yours week-to-week</div>
+        <div id="derby-display"></div>
+      </div>
+    </div>
   </div>
 
   <div id="view-awards" class="view">
@@ -1409,7 +1456,133 @@ async function renderAutopsyCard(){
     </div>`;
 }
 
-// ---------- Transfer Shaming — a hall-of-shame for reckless hit-taking, season-long ----------
+// ---------- GW Bingo — personal card auto-ticked from real data ----------
+const BINGO_SQUARE_META = {
+  captain_blank:  { icon:"😬", text:"Captain blanks" },
+  haul_15:        { icon:"🔥", text:"Haul of 15+ pts" },
+  bench_beats:    { icon:"🪑", text:"Bench beats XI" },
+  hit_scores:     { icon:"🎯", text:"Hit player scores 8+" },
+  win_gw:         { icon:"🏆", text:"Win the GW" },
+  no_transfers:   { icon:"🔒", text:"No transfers" },
+  under_avg:      { icon:"📉", text:"Below league avg" },
+  diff_scores:    { icon:"🦄", text:"Diff scores 10+" },
+  best_on_bench:  { icon:"😭", text:"Best on bench" },
+  chip_played:    { icon:"⚡", text:"Chip played" },
+  algorithm_beats:{ icon:"🤖", text:"Algorithm beats you" },
+  robot_beats:    { icon:"⚙️", text:"Robot beats you" },
+  madman_beats:   { icon:"🎲", text:"Madman beats you" },
+  top_scorer:     { icon:"🏅", text:"Top points this GW" },
+  under_30:       { icon:"💀", text:"Score under 30" },
+  hattrick:       { icon:"⚽", text:"Hat-trick in squad" },
+  triple_captain: { icon:"3️⃣", text:"Triple captain" },
+  big_hit:        { icon:"🫠", text:"Hit of 8+ pts" },
+  clean_sheet:    { icon:"🧱", text:"Clean sheet scored" },
+  on_avg:         { icon:"📊", text:"Exactly on avg" },
+  captain_wins:   { icon:"🧠", text:"Captain beats all rivals'" },
+  climb_5:        { icon:"⬆️", text:"Climb 5+ places" },
+  top_3:          { icon:"🥉", text:"Top 3 overall" },
+  score_over_70:  { icon:"💥", text:"Score 70+ pts" },
+  free:           { icon:"✨", text:"FREE" },
+};
+function seededShuffleIds(arr, seed){
+  const a=[...arr]; let s=seed;
+  for(let i=a.length-1;i>0;i--){
+    s=(s*1664525+1013904223)&0xffffffff;
+    const j=Math.abs(s)%(i+1);
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+const BINGO_LINES=[[0,1,2,3,4],[5,6,7,8,9],[10,11,12,13,14],[15,16,17,18,19],[20,21,22,23,24],[0,5,10,15,20],[1,6,11,16,21],[2,7,12,17,22],[3,8,13,18,23],[4,9,14,19,24],[0,6,12,18,24],[4,8,12,16,20]];
+async function renderBingoCard(){
+  const container = document.getElementById("bingo-grid-container");
+  if(!featureUnlocked('gwBingo')||!GW_COUNT||!ident.team){ container.innerHTML=""; return; }
+  document.getElementById("bingo-new-badge").innerHTML = newBadgeHtml('gwBingo');
+  const me = managers.find(m=>m.teamName===ident.team);
+  if(!me){ container.innerHTML=`<div class="sub">Pick your identity first.</div>`; return; }
+  container.innerHTML=`<div class="sub">Loading card…</div>`;
+  const snap = await getDoc(doc(db,`gwBingo/gw${GW_COUNT}_${me.id}`));
+  if(!snap.exists()){
+    container.innerHTML=`<div class="sub">Card being computed — check back after the next sync.</div>`;
+    return;
+  }
+  const data=snap.data();
+  const card=data.card; const hits=data.hits; const bingoCount=data.bingoCount||0;
+  const bingoLineIdxs=new Set(BINGO_LINES.filter(l=>l.every(i=>hits[i])).flat());
+  container.innerHTML=`
+    <div class="bingo-grid">${card.map((sqId,i)=>{
+      const meta=BINGO_SQUARE_META[sqId]||{icon:"?",text:sqId};
+      const inLine=bingoLineIdxs.has(i);
+      const cls=sqId==="free"?"bingo-cell free":inLine?"bingo-cell bingo-line":hits[i]?"bingo-cell hit":"bingo-cell";
+      return `<div class="${cls}"><div class="bingo-cell-icon">${meta.icon}</div>${meta.text}</div>`;
+    }).join("")}</div>
+    ${bingoCount>0?`<div class="bingo-banner">BINGO${bingoCount>1?` ×${bingoCount}`:""}! 🎉</div>`:""}
+  `;
+}
+
+// ---------- Manager DNA ----------
+async function renderManagerDNA(){
+  const el=document.getElementById("dna-display");
+  document.getElementById("dna-new-badge").innerHTML=newBadgeHtml('managerDNA');
+  if(!featureUnlocked('managerDNA')||!ident.team){ el.innerHTML=""; return; }
+  const me=managers.find(m=>m.teamName===ident.team);
+  if(!me){ el.innerHTML=`<div class="sub">Pick your identity first.</div>`; return; }
+  const snap=await getDoc(doc(db,`managerDNA/${me.id}`));
+  if(!snap.exists()){ el.innerHTML=`<div class="sub">DNA computed after GW3.</div>`; return; }
+  const d=snap.data();
+  const TRAIT_LABELS={gambler:"Gambler",template:"Template",consistent:"Consistent",clutch:"Clutch",differential:"Differential"};
+  el.innerHTML=`
+    <div class="dna-archetype">${d.archetype}</div>
+    <div class="dna-traits">${Object.entries(d.traits||{}).map(([k,v])=>`
+      <div class="dna-trait-row">
+        <span class="tname">${TRAIT_LABELS[k]||k}</span>
+        <div class="dna-bar-bg"><div class="dna-bar-fill" style="width:${v}%"></div></div>
+        <span class="tscore">${v}</span>
+      </div>`).join("")}
+    </div>`;
+}
+
+// ---------- H2H Derby — find your closest rival ----------
+async function renderDerby(){
+  const el=document.getElementById("derby-display");
+  document.getElementById("derby-new-badge").innerHTML=newBadgeHtml('derby');
+  if(!featureUnlocked('derby')||!ident.team||managers.length<2||GW_COUNT<3){ el.innerHTML=""; return; }
+  const me=managers.find(m=>m.teamName===ident.team);
+  if(!me||me.history.length<2){ el.innerHTML=`<div class="sub">Derby unlocks after a few gameweeks of data.</div>`; return; }
+  const myScores=me.history.map(h=>h.points||0);
+  let bestRival=null,bestCorr=-Infinity;
+  managers.filter(m=>m.id!==me.id).forEach(rival=>{
+    const rivScores=rival.history.map(h=>h.points||0);
+    const minLen=Math.min(myScores.length,rivScores.length);
+    if(minLen<2) return;
+    const a=myScores.slice(0,minLen),b=rivScores.slice(0,minLen);
+    const ma=a.reduce((s,v)=>s+v,0)/minLen,mb=b.reduce((s,v)=>s+v,0)/minLen;
+    const num=a.reduce((s,v,i)=>s+(v-ma)*(b[i]-mb),0);
+    const den=Math.sqrt(a.reduce((s,v)=>s+(v-ma)**2,0)*b.reduce((s,v)=>s+(v-mb)**2,0));
+    const corr=den>0?num/den:0;
+    if(corr>bestCorr){bestCorr=corr;bestRival=rival;}
+  });
+  if(!bestRival){ el.innerHTML=`<div class="sub">Not enough data yet.</div>`; return; }
+  const myTotal=me.totalPoints,rivTotal=bestRival.totalPoints;
+  const gwWins=me.history.filter((h,i)=>(h.points||0)>(bestRival.history[i]?.points||0)).length;
+  const rivWins=me.history.length-gwWins;
+  el.innerHTML=`
+    <div class="derby-vs">
+      <div class="derby-side">
+        <div class="dname">${me.teamName}</div>
+        <div class="dscore">${myTotal}</div>
+        <div style="font-size:10px;color:var(--muted)">${gwWins} GW wins</div>
+      </div>
+      <div class="derby-mid">vs</div>
+      <div class="derby-side">
+        <div class="dname">${bestRival.teamName}</div>
+        <div class="dscore">${rivTotal}</div>
+        <div style="font-size:10px;color:var(--muted)">${rivWins} GW wins</div>
+      </div>
+    </div>
+    <div class="derby-stat">Similarity score: ${Math.round(bestCorr*100)}% — your scores track closer than any other pair in the league</div>`;
+}
+
 function renderTransferShamingCard(){
   const wrap = document.getElementById("transfer-shaming-wrap");
   if(!featureUnlocked('transferShaming') || managers.length === 0){ wrap.innerHTML = ""; return; }
@@ -2732,7 +2905,7 @@ async function renderFormationTrends(){
 function rankedDetailRows(rankedManagers, valueFn, unit){
   return rankedManagers.map((m,i) => `<div class="top5-row"><div class="n">${i+1}</div><div class="t">${m.teamName}</div><div class="v">${valueFn(m)} ${unit}</div></div>`).join("");
 }
-document.getElementById("view-insights").addEventListener("click", (e) => {
+document.getElementById("view-insights").addEventListener("click", async (e) => {
   const card = e.target.closest(".kpi-card.clickable"); if(!card) return;
   const type = card.dataset.detail;
   const S = seasonStats();
@@ -2760,6 +2933,13 @@ document.getElementById("view-insights").addEventListener("click", (e) => {
     openSheet(`
       <div class="squad-header"><div style="font-size:22px">💰</div><div><h2>Smart Money</h2><p>Team value growth since GW1 — early transfers that paid off in price rises</p></div></div>
       ${rankedDetailRows(ranked, m=>`${teamValueGrowth(m)>=0?'+':''}£${teamValueGrowth(m).toFixed(1)}m`, "")}
+    `);
+  } else if(type === "dna"){
+    const dnaSnaps = await Promise.all(managers.map(m=>getDoc(doc(db,`managerDNA/${m.id}`))));
+    const rows = dnaSnaps.map(s=>s.exists()?s.data():null).filter(Boolean).sort((a,b)=>a.archetype.localeCompare(b.archetype));
+    openSheet(`
+      <div class="squad-header"><div style="font-size:22px">🧬</div><div><h2>Manager DNA</h2><p>Playing style classification based on season decisions</p></div></div>
+      ${rows.map(r=>`<div class="mini-rank-row"><span class="t">${r.teamName}</span><span class="v">${r.archetype}</span></div>`).join("") || '<div class="sub">DNA computed after GW3.</div>'}
     `);
   } else if(type === "momentum"){
     if(GW_COUNT < MIN_GW_FOR_MOMENTUM){ openSheet(`<div class="sub">Momentum unlocks after GW${MIN_GW_FOR_MOMENTUM}.</div>`); return; }
@@ -3566,6 +3746,9 @@ async function boot(){
   safeRender(renderHighlights, "renderHighlights");
   safeRender(renderAutopsyCard, "renderAutopsyCard");
   safeRender(renderTransferShamingCard, "renderTransferShamingCard");
+  safeRender(renderBingoCard, "renderBingoCard");
+  safeRender(renderManagerDNA, "renderManagerDNA");
+  safeRender(renderDerby, "renderDerby");
 
   renderDeadline();
   setInterval(renderDeadline, 1000);
@@ -3622,6 +3805,9 @@ async function boot(){
       safeRender(renderHighlights, "renderHighlights (live refresh)");
       safeRender(renderAutopsyCard, "renderAutopsyCard (live refresh)");
       safeRender(renderTransferShamingCard, "renderTransferShamingCard (live refresh)");
+      safeRender(renderBingoCard, "renderBingoCard (live refresh)");
+      safeRender(renderManagerDNA, "renderManagerDNA (live refresh)");
+      safeRender(renderDerby, "renderDerby (live refresh)");
       safeRender(renderPrize, "renderPrize (live refresh)");
       safeRender(renderTransferActivity, "renderTransferActivity (live refresh)"); // this is the whole point pre-deadline — transfers change minute to minute
       if(IS_FINAL) clearInterval(liveRefresh); // fully settled — stop polling
