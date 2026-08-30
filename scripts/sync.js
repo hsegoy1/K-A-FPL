@@ -397,8 +397,13 @@ async function main() {
       const bench = picks.picks.filter((p) => p.position > 11).map(withPoints);
       const chip = picks.active_chip || null;
       const effectiveCaptainId = picks.picks.find((p) => (p.multiplier ?? 1) >= 2)?.element || captainPickId || null;
-      const transfersIn = transfersThisGw.map((t) => ({ element: t.element_in, cost: t.element_in_cost }));
-      const transfersOut = transfersThisGw.map((t) => ({ element: t.element_out, cost: t.element_out_cost }));
+      // Dedupe by the actual (in, out) swap pair — not each side
+      // independently, which would break the parallel index alignment that
+      // Transfer Lab and Transfer Verdict rely on (transfersIn[j] must stay
+      // paired with transfersOut[j] as the same swap).
+      const uniqueTransfers = [...new Map(transfersThisGw.map((t) => [`${t.element_in}-${t.element_out}`, t])).values()];
+      const transfersIn = uniqueTransfers.map((t) => ({ element: t.element_in, cost: t.element_in_cost }));
+      const transfersOut = uniqueTransfers.map((t) => ({ element: t.element_out, cost: t.element_out_cost }));
 
       await db.doc(`managers/${entryId}/gwSquads/gw${gw}`).set({
         gw,
@@ -757,9 +762,9 @@ async function computeManagerDNA(managerHistoryMap, currentGw) {
 // FPL IQ — a composite decision-quality score based on season-long behaviour.
 // Four pillars: hit control (avoiding costly transfers), consistency,
 // bench management (not wasting points on unused subs), and relative
-// performance (beating the field). Unlocks at GW5, improves over the season.
+// performance (beating the field). Shows from GW1 — early scores will be
+// noisy with little data, but that's fine, it settles as the season builds.
 async function computeFplIQ(managerHistoryMap, currentGw) {
-  if (currentGw < 5) return;
   const allScores = Object.values(managerHistoryMap)
     .map(m => m.fullHistory.filter(h => h.gw <= currentGw).map(h => h.points||0))
     .flat();
@@ -767,7 +772,7 @@ async function computeFplIQ(managerHistoryMap, currentGw) {
   const writes = [];
   for (const [entryId, m] of Object.entries(managerHistoryMap)) {
     const history = m.fullHistory.filter(h => h.gw <= currentGw);
-    if (history.length < 3) continue;
+    if (history.length < 1) continue;
     const gwCount = history.length;
     const scores = history.map(h=>h.points||0);
     const mean = scores.reduce((s,v)=>s+v,0)/gwCount;
@@ -847,11 +852,37 @@ async function computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsBy
 // FPL Court — AI-generated weekly tribunal once bonus points confirm.
 // Finds the most dramatic "crime" of the week, then generates prosecution
 // and defence arguments. Only runs once per finalized GW.
+// Checks whether TODAY's fixtures (in NPT) for this gameweek have all
+// finished, and whether we've already generated content reflecting today's
+// results — used by Press Conference and FPL Court so they update once per
+// matchday as the week unfolds (Saturday night, then Sunday night, etc)
+// instead of once per whole gameweek, while never wasting a call on a day
+// with no fixtures at all.
+function todayNPTServer() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kathmandu" }).format(new Date());
+}
+function sameNPTDateServer(isoString, dateStr) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kathmandu" }).format(new Date(isoString)) === dateStr;
+}
+async function checkTodaysFixturesReady(gw) {
+  const snap = await db.doc(`gameweekFixtures/gw${gw}`).get();
+  if (!snap.exists) return { ready: false, today: null };
+  const fixtures = snap.data().fixtures || [];
+  const today = todayNPTServer();
+  const todaysFixtures = fixtures.filter((f) => sameNPTDateServer(f.kickoff, today));
+  if (todaysFixtures.length === 0) return { ready: false, today }; // nothing scheduled today — don't spend a call
+  const allDone = todaysFixtures.every((f) => f.finished);
+  return { ready: allDone, today };
+}
+
 async function generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints, playersMeta) {
   if (gw < 10) return;
   const ref = db.doc(`fplCourt/gw${gw}`);
   const existing = await ref.get();
-  if (existing.exists) return;
+  const existingData = existing.exists ? existing.data() : null;
+  const { ready, today } = await checkTodaysFixturesReady(gw);
+  if (!ready) return; // no fixtures today, or today's matches aren't finished yet
+  if (existingData?.lastGeneratedForDate === today) return; // already reflects today's results
   // Find the defendant: manager with highest bench points (biggest waste)
   // — the most visually dramatic FPL crime, every single week
   const defendant = [...gwResults].sort((a,b)=>b.benchPoints-a.benchPoints)[0];
@@ -864,7 +895,7 @@ async function generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePoint
     `Defendant: ${defendant.teamName} (managed by ${defendant.managerName})`,
     `Crime: Left ${defendant.benchPoints} points on the bench unused this gameweek`,
     bestBench ? `Key exhibit: ${playersMeta[bestBench.id]?.n||'Unknown'} scored ${bestBench.pts} points while watching from the bench` : null,
-    `Their actual score: ${defendant.gwPoints} points (league average was ${Math.round(avgPoints)} pts)`,
+    `Their actual score so far: ${defendant.gwPoints} points (league average was ${Math.round(avgPoints)} pts)`,
     `The bench points, if played, would have put them ${defendant.benchPoints>0?'higher':'lower'} in the GW standings`,
   ].filter(Boolean);
   const prompt = `You are a judge at "FPL Court", a mock tribunal for the worst Fantasy Premier League decision of the week in an office mini-league called K&A Paid FPL.
@@ -889,6 +920,7 @@ Return ONLY a JSON object with keys "prosecution" and "defence". No markdown, no
   }
   await ref.set({
     gw,
+    lastGeneratedForDate: today,
     defendant: { entryId: defendant.entryId, teamName: defendant.teamName, managerName: defendant.managerName, crime: `${defendant.benchPoints} bench points wasted` },
     prosecution: parsed.prosecution || "",
     defence: parsed.defence || "",
@@ -931,22 +963,26 @@ async function computeLostPoints(gwResults, gwSquadsRollup, livePointsByElement,
 }
 
 // Press Conference — AI-generated post-match interview for the GW winner
-// and loser, styled like a real football press conference. Runs once per
-// finalized GW, never regenerated. Unlocks at GW7.
+// and loser, styled like a real football press conference. Updates once per
+// matchday as fixtures finish (Saturday night, Sunday night, etc), skipping
+// any day with no fixtures scheduled. Unlocks at GW7.
 async function generatePressConferenceIfNeeded(gw, gwResults, avgPoints) {
   if (gw < 7) return;
   const ref = db.doc(`pressConference/gw${gw}`);
   const existing = await ref.get();
-  if (existing.exists) return;
+  const existingData = existing.exists ? existing.data() : null;
+  const { ready, today } = await checkTodaysFixturesReady(gw);
+  if (!ready) return;
+  if (existingData?.lastGeneratedForDate === today) return;
   const byPoints = [...gwResults].sort((a, b) => b.gwPoints - a.gwPoints);
   const winner = byPoints[0];
   const loser = byPoints[byPoints.length - 1];
   if (!winner || !loser) return;
-  const prompt = `You are a fictional sports journalist covering "K&A Paid FPL", a 35-person office Fantasy Premier League mini-league. Write a funny, punchy post-match press conference for Gameweek ${gw}.
+  const prompt = `You are a fictional sports journalist covering "K&A Paid FPL", a 35-person office Fantasy Premier League mini-league. Write a funny, punchy post-match press conference for Gameweek ${gw}, based on results so far this gameweek.
 
 Include TWO separate interview segments:
-1. The winner — ${winner.teamName} (${winner.managerName}) scored ${winner.gwPoints} points
-2. The loser — ${loser.teamName} (${loser.managerName}) scored ${loser.gwPoints} points (league average was ${Math.round(avgPoints)})
+1. The winner so far — ${winner.teamName} (${winner.managerName}) scored ${winner.gwPoints} points
+2. The loser so far — ${loser.teamName} (${loser.managerName}) scored ${loser.gwPoints} points (league average was ${Math.round(avgPoints)})
 
 Each segment: a journalist question, then the manager's answer (2-3 sentences). Keep it funny, like real football managers but in an FPL context. Plain text only, no markdown.
 
@@ -962,6 +998,7 @@ Return ONLY a JSON object: { "winner": { "question": "...", "answer": "..." }, "
   }
   await ref.set({
     gw,
+    lastGeneratedForDate: today,
     winner: { entryId: winner.entryId, teamName: winner.teamName, points: winner.gwPoints, ...parsed.winner },
     loser: { entryId: loser.entryId, teamName: loser.teamName, points: loser.gwPoints, ...parsed.loser },
     generatedAt: admin.firestore.FieldValue.serverTimestamp(),
