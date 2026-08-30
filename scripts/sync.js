@@ -99,28 +99,9 @@ async function main() {
   });
   await db.doc("teamsMeta/strength").set({ teams: teamStrength, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
 
-  // Official FPL Dream Team (Team of the Week) for the current GW.
-  // Also compute "Team of the Season so far" from bootstrap element totals —
-  // this gives us the best XI across ALL FPL players by accumulated points,
-  // not just players in our league, so it reads as genuinely authoritative.
-  if (gw) {
-    try {
-      const dreamTeam = await getJson(`${FPL_BASE}/dream-team/${gw}/`);
-      if (dreamTeam?.top_players?.length) {
-        await db.doc(`dreamTeam/gw${gw}`).set({
-          gw,
-          players: dreamTeam.top_players,
-          formation: dreamTeam.formation || null,
-          syncedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-        console.log(`Dream Team GW${gw}: ${dreamTeam.top_players.length} players synced`);
-      }
-    } catch (e) {
-      console.log(`Dream Team GW${gw} fetch failed: ${e.message}`);
-    }
-  }
   // Team of the Season — best XI by total FPL points this season so far,
-  // computed from the bootstrap data we already fetched.
+  // computed from the bootstrap data we already fetched. No dependency on
+  // `gw` being resolved yet, so this can safely run up here.
   const seasonPos = { 1:[], 2:[], 3:[], 4:[] };
   bootstrap.elements.forEach(p => {
     if (p.total_points > 0) {
@@ -147,6 +128,26 @@ async function main() {
   const targetEvent = currentEvent || lastFinished;
   const gw = targetEvent ? targetEvent.id : null;
   const isFinal = targetEvent ? !!(targetEvent.finished && targetEvent.data_checked) : false;
+
+  // Official FPL Dream Team (Team of the Week) for the current GW — needs
+  // `gw` resolved above, so this has to live down here, not next to the
+  // Team of the Season block even though they're logically related.
+  if (gw) {
+    try {
+      const dreamTeam = await getJson(`${FPL_BASE}/dream-team/${gw}/`);
+      if (dreamTeam?.top_players?.length) {
+        await db.doc(`dreamTeam/gw${gw}`).set({
+          gw,
+          players: dreamTeam.top_players,
+          formation: dreamTeam.formation || null,
+          syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        console.log(`Dream Team GW${gw}: ${dreamTeam.top_players.length} players synced`);
+      }
+    } catch (e) {
+      console.log(`Dream Team GW${gw} fetch failed: ${e.message}`);
+    }
+  }
 
   if (!targetEvent) {
     console.log("No gameweek has kicked off yet this season — will still sync standings/managers, but skip gameweek-specific stats for now.");
