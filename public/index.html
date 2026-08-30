@@ -156,6 +156,15 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .table-col-standings.compact .rinfo .mgr{font-size:9.5px;}
 .table-col-standings.compact .rpts b{font-size:13.5px;}
 .table-col-standings.compact .rpts span{font-size:10px;}
+.ghost-row{display:flex;align-items:center;gap:7px;background:rgba(155,92,255,.08);border:1px dashed rgba(155,92,255,.4);border-radius:10px;padding:8px 9px;margin-bottom:5px;opacity:0;transform:translateY(8px);animation:rowIn .4s ease forwards;}
+.ghost-row .pos{font-family:var(--font-m);color:var(--muted);width:16px;flex-shrink:0;text-align:center;}
+.ghost-avatar{width:26px;height:26px;border-radius:7px;background:rgba(155,92,255,.15);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;}
+.ghost-row .rinfo{flex:1;min-width:0;}
+.ghost-row .rinfo .team{font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ghost-row .rinfo .mgr{font-size:9.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ghost-row .rpts{text-align:right;flex-shrink:0;}
+.ghost-row .rpts b{font-size:13.5px;display:block;}
+.ghost-row .rpts span{font-size:9px;color:var(--muted);font-style:italic;}
 .col-title{font-family:var(--font-m);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:10px 10px 6px;}
 .fx-date-header{font-family:var(--font-m);font-size:9.5px;letter-spacing:.04em;color:var(--muted);background:rgba(255,255,255,.03);padding:6px 10px;border-bottom:1px solid var(--line);}
 .fixture-row{display:flex;align-items:center;gap:6px;padding:10px 8px;border-bottom:1px solid var(--line);cursor:pointer;}
@@ -2075,6 +2084,7 @@ function renderAdminFeatureControlTab(){
     const val = e.target.value.trim();
     previewGwOverride = val === "" ? null : Math.max(1, Math.min(38, parseInt(val)||1));
     renderAdminFeatureControlTab();
+    safeRender(renderAll, "renderAll (preview)");
     safeRender(renderAutopsyCard, "renderAutopsyCard (preview)");
     safeRender(renderTransferShamingCard, "renderTransferShamingCard (preview)");
     safeRender(renderFixtures, "renderFixtures (preview)", fixturesViewGw);
@@ -2082,6 +2092,7 @@ function renderAdminFeatureControlTab(){
   document.getElementById("preview-gw-clear").addEventListener("click", () => {
     previewGwOverride = null;
     renderAdminFeatureControlTab();
+    safeRender(renderAll, "renderAll (preview)");
     safeRender(renderAutopsyCard, "renderAutopsyCard (preview)");
     safeRender(renderTransferShamingCard, "renderTransferShamingCard (preview)");
     safeRender(renderFixtures, "renderFixtures (preview)", fixturesViewGw);
@@ -2096,6 +2107,7 @@ function renderAdminFeatureControlTab(){
       await setDoc(doc(db, "adminConfig/featureOverrides"), { overrides: featureOverrides });
       showToast(`${FEATURE_REGISTRY[id].title} — ${state === 'default' ? 'back to automatic' : state === 'forceOn' ? 'forced ON for everyone' : 'forced OFF for everyone'}`);
       renderAdminFeatureControlTab();
+      safeRender(renderAll, "renderAll (override)");
       safeRender(renderAutopsyCard, "renderAutopsyCard (override)");
       safeRender(renderTransferShamingCard, "renderTransferShamingCard (override)");
       safeRender(renderFixtures, "renderFixtures (override)", fixturesViewGw);
@@ -2154,7 +2166,7 @@ function renderAdminBanterTab(){
   });
 }
 
-function renderStandings(){
+async function renderStandings(){
   document.getElementById("table-title").textContent = mode==="overall" ? "Overall Standings" : `Gameweek ${mode} — Who Won This Week`;
   const standingsCol = document.getElementById("table-col-standings");
   const fixturesCol = document.getElementById("table-col-fixtures");
@@ -2177,8 +2189,43 @@ function renderStandings(){
   }
   const gwPts = m => m.history.find(h=>h.gw===mode)?.points ?? 0;
   const sorted = mode==="overall" ? [...managers].sort((a,b)=>b.totalPoints-a.totalPoints) : [...managers].sort((a,b)=>gwPts(b)-gwPts(a));
-  document.getElementById("standings").innerHTML = sorted.map((m,i) => {
-    const mainVal = mode==="overall" ? m.totalPoints : gwPts(m);
+
+  // Ghost Teams only make sense in a specific-GW view — their picks are
+  // recomputed fresh each week from real ownership, there's no persistent
+  // "season total" to show them against in Overall mode.
+  let ghostEntries = [];
+  if(mode !== "overall" && featureUnlocked('ghostTeams')){
+    const snap = await getDoc(doc(db, `ghostTeams/gw${mode}`));
+    if(snap.exists()){
+      const g = snap.data();
+      const GHOST_META = {
+        algorithm: { name: "🤖 Algorithm", desc: "Always plays the template XI" },
+        robot: { name: "⚙️ Robot", desc: "Captains whoever's most captained" },
+        madman: { name: "🎲 Madman", desc: "Pure differential, every week" },
+      };
+      ghostEntries = Object.entries(GHOST_META)
+        .filter(([key]) => g[key])
+        .map(([key, meta]) => ({ isGhost: true, name: meta.name, desc: meta.desc, points: g[key].points }));
+    }
+  }
+
+  const combined = [
+    ...sorted.map(m => ({ isGhost: false, m, points: mode==='overall' ? m.totalPoints : gwPts(m) })),
+    ...ghostEntries,
+  ].sort((a,b) => b.points - a.points);
+
+  document.getElementById("standings").innerHTML = combined.map((entry, i) => {
+    if(entry.isGhost){
+      return `
+      <div class="ghost-row" style="animation-delay:${Math.min(i*0.04,0.5)}s">
+        <div class="pos">${i+1}</div>
+        <div class="avatar ghost-avatar">👻</div>
+        <div class="rinfo"><div class="team">${entry.name}${newBadgeHtml('ghostTeams')}</div><div class="mgr">${entry.desc}</div></div>
+        <div class="rpts"><b>${entry.points}</b><span>not a real person</span></div>
+      </div>`;
+    }
+    const m = entry.m;
+    const mainVal = entry.points;
     const lastGw = m.history.find(h=>h.gw===GW_COUNT);
     const subVal = mode==="overall" ? (lastGw ? `GW${GW_COUNT}: ${lastGw.points} pts` : "Season not started") : `${m.totalPoints} pts total`;
     return `
@@ -3475,7 +3522,7 @@ document.getElementById("standings").addEventListener("click", async (e)=>{
   await openPitchView(parseInt(row.dataset.mgr));
 });
 
-function renderAll(){ renderHeroStats(); renderStandings(); }
+async function renderAll(){ renderHeroStats(); await renderStandings(); }
 
 // One bad render must never be able to take the rest of the page down with
 // it — wrap every independent section so a failure in one (bad data for a
