@@ -155,6 +155,30 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .derby-side .dscore{font-family:var(--font-m);font-size:22px;color:var(--accent2);}
 .derby-mid{color:var(--muted);font-size:11px;font-family:var(--font-m);}
 .derby-stat{font-size:11px;color:var(--muted);text-align:center;margin-top:6px;}
+.fpliq-score{font-size:38px;font-weight:800;font-family:var(--font-d);text-align:center;margin:8px 0 2px;}
+.fpliq-label{text-align:center;font-size:13px;color:var(--accent2);font-family:var(--font-m);margin-bottom:10px;}
+.fpliq-bars{display:flex;flex-direction:column;gap:5px;}
+.fpliq-bar-row{display:flex;align-items:center;gap:8px;font-size:10.5px;}
+.fpliq-bar-row .fname{width:90px;color:var(--muted);flex-shrink:0;}
+.fpliq-bar-bg{flex:1;height:5px;background:var(--line);border-radius:3px;overflow:hidden;}
+.fpliq-bar-fill{height:100%;background:var(--grad);border-radius:3px;}
+.fpliq-bar-row .fscore{width:24px;text-align:right;font-family:var(--font-m);font-size:10px;color:var(--muted);flex-shrink:0;}
+.gotaway-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12px;}
+.gotaway-row:last-child{border-bottom:none;}
+.gotaway-row .gname{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.gotaway-row .gsold{color:var(--muted);font-size:10px;flex-shrink:0;}
+.gotaway-row .gpts{font-family:var(--font-m);color:var(--red);font-weight:700;flex-shrink:0;}
+.court-defendant{background:rgba(255,77,109,.07);border:1px solid rgba(255,77,109,.25);border-radius:10px;padding:10px 12px;margin-bottom:12px;}
+.court-defendant .cname{font-weight:700;font-size:13px;}
+.court-defendant .ccrime{font-size:11px;color:var(--muted);margin-top:2px;}
+.court-section{margin-bottom:10px;}
+.court-section .ctitle{font-family:var(--font-m);font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px;}
+.court-section .ctext{font-size:12px;line-height:1.55;}
+.court-vote{display:flex;gap:8px;margin-top:12px;}
+.court-vote button{flex:1;padding:8px;border-radius:10px;font-family:var(--font-m);font-size:12px;font-weight:700;cursor:pointer;border:1px solid var(--line);}
+.court-vote .guilty{background:rgba(255,77,109,.1);border-color:rgba(255,77,109,.4);color:var(--red);}
+.court-vote .innocent{background:rgba(57,255,136,.1);border-color:rgba(57,255,136,.4);color:var(--green);}
+.court-result{text-align:center;font-family:var(--font-m);font-size:13px;font-weight:700;margin-top:10px;}
 .section-title .bar{width:3px;height:14px;background:var(--grad);border-radius:2px;}
 
 .row{display:flex;align-items:center;gap:12px;background:var(--panel-glass);backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);border:1px solid var(--line);border-radius:var(--radius);padding:11px 12px;margin-bottom:8px;cursor:pointer;opacity:0;transform:translateY(8px);animation:rowIn .4s ease forwards;}
@@ -843,6 +867,32 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
         <h3>Your personal rival this season</h3>
         <div class="sub">The manager whose score tracks closest to yours week-to-week</div>
         <div id="derby-display"></div>
+      </div>
+    </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>FPL IQ <span id="fpliq-new-badge"></span></div>
+      <div class="kpi-card clickable" data-detail="fpliq">
+        <h3>Your decision quality this season</h3>
+        <div id="fpliq-display"></div>
+        <div class="tap-more">tap for league IQ ranking →</div>
+      </div>
+    </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>The One That Got Away <span id="gotaway-new-badge"></span></div>
+      <div class="kpi-card">
+        <h3>Players you sold who came back to haunt you</h3>
+        <div class="sub">Points they've scored since you transferred them out</div>
+        <div id="gotaway-display"></div>
+      </div>
+    </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>FPL Court <span id="court-new-badge"></span></div>
+      <div class="kpi-card" id="court-card">
+        <h3>This week's tribunal</h3>
+        <div id="court-display"></div>
       </div>
     </div>
   </div>
@@ -1581,6 +1631,93 @@ async function renderDerby(){
       </div>
     </div>
     <div class="derby-stat">Similarity score: ${Math.round(bestCorr*100)}% — your scores track closer than any other pair in the league</div>`;
+}
+
+// ---------- FPL IQ ----------
+async function renderFplIQ(){
+  const el=document.getElementById("fpliq-display");
+  document.getElementById("fpliq-new-badge").innerHTML=newBadgeHtml('fplIQ');
+  if(!featureUnlocked('fplIQ')||!ident.team){ el.innerHTML=""; return; }
+  const me=managers.find(m=>m.teamName===ident.team);
+  if(!me){ el.innerHTML=`<div class="sub">Pick your identity first.</div>`; return; }
+  const snap=await getDoc(doc(db,`fplIQ/${me.id}`));
+  if(!snap.exists()){ el.innerHTML=`<div class="sub">FPL IQ unlocks after GW5.</div>`; return; }
+  const d=snap.data();
+  const LABELS={hitIQ:"Hit Control",consistencyIQ:"Consistency",benchIQ:"Bench Mgmt",relativeIQ:"vs Field"};
+  el.innerHTML=`
+    <div class="fpliq-score">${d.iq}</div>
+    <div class="fpliq-label">${d.label}</div>
+    <div class="fpliq-bars">${Object.entries(d.breakdown||{}).map(([k,v])=>`
+      <div class="fpliq-bar-row">
+        <span class="fname">${LABELS[k]||k}</span>
+        <div class="fpliq-bar-bg"><div class="fpliq-bar-fill" style="width:${v}%"></div></div>
+        <span class="fscore">${v}</span>
+      </div>`).join("")}
+    </div>`;
+}
+
+// ---------- The One That Got Away ----------
+async function renderGotAway(){
+  const el=document.getElementById("gotaway-display");
+  document.getElementById("gotaway-new-badge").innerHTML=newBadgeHtml('oneThatGotAway');
+  if(!featureUnlocked('oneThatGotAway')||!ident.team){ el.innerHTML=""; return; }
+  const me=managers.find(m=>m.teamName===ident.team);
+  if(!me){ el.innerHTML=`<div class="sub">Pick your identity first.</div>`; return; }
+  const snap=await getDoc(doc(db,`gotAway/${me.id}`));
+  if(!snap.exists()||!(snap.data().players?.length)){ el.innerHTML=`<div class="sub">No transfers out tracked yet — check back after your first transfer.</div>`; return; }
+  const players=snap.data().players.filter(p=>p.pointsSince>0).sort((a,b)=>b.pointsSince-a.pointsSince).slice(0,5);
+  if(!players.length){ el.innerHTML=`<div class="sub">None of your sold players have scored since leaving. You're fine.</div>`; return; }
+  el.innerHTML=players.map(p=>`
+    <div class="gotaway-row">
+      <span class="gname">${p.name}</span>
+      <span class="gsold">sold GW${p.soldGw}</span>
+      <span class="gpts">+${p.pointsSince} pts since</span>
+    </div>`).join("");
+}
+
+// ---------- FPL Court ----------
+async function renderFplCourt(){
+  const el=document.getElementById("court-display");
+  document.getElementById("court-new-badge").innerHTML=newBadgeHtml('fplCourt');
+  if(!featureUnlocked('fplCourt')||!GW_COUNT){ el.innerHTML=""; return; }
+  const snap=await getDoc(doc(db,`fplCourt/gw${GW_COUNT}`));
+  if(!snap.exists()){
+    el.innerHTML=`<div class="sub">Court convenes once GW${GW_COUNT} bonus points are confirmed.</div>`;
+    return;
+  }
+  const d=snap.data();
+  const me=managers.find(m=>m.teamName===ident.team);
+  const myVote=me?localStorage.getItem(`court_vote_gw${GW_COUNT}_${me.id}`):null;
+  el.innerHTML=`
+    <div class="court-defendant">
+      <div class="cname">⚖️ Defendant: ${d.defendant?.teamName}</div>
+      <div class="ccrime">${d.defendant?.crime}</div>
+    </div>
+    <div class="court-section">
+      <div class="ctitle">🔴 Prosecution</div>
+      <div class="ctext">${escapeHtml(d.prosecution||"")}</div>
+    </div>
+    <div class="court-section">
+      <div class="ctitle">🟢 Defence</div>
+      <div class="ctext">${escapeHtml(d.defence||"")}</div>
+    </div>
+    ${myVote
+      ? `<div class="court-result">${myVote==="guilty"?"🔴 You voted: Guilty":"🟢 You voted: Not Guilty"}</div>`
+      : me?`<div class="court-vote">
+          <button class="guilty" data-v="guilty">🔴 Guilty</button>
+          <button class="innocent" data-v="innocent">🟢 Not Guilty</button>
+        </div>`:''}
+  `;
+  if(me && !myVote){
+    el.querySelectorAll(".court-vote button").forEach(btn=>{
+      btn.addEventListener("click",async()=>{
+        const v=btn.dataset.v;
+        localStorage.setItem(`court_vote_gw${GW_COUNT}_${me.id}`,v);
+        await setDoc(doc(db,`fplCourt/gw${GW_COUNT}`),{ [`votes.${v}`]: increment(1) },{ merge:true });
+        renderFplCourt();
+      });
+    });
+  }
 }
 
 function renderTransferShamingCard(){
@@ -3749,6 +3886,9 @@ async function boot(){
   safeRender(renderBingoCard, "renderBingoCard");
   safeRender(renderManagerDNA, "renderManagerDNA");
   safeRender(renderDerby, "renderDerby");
+  safeRender(renderFplIQ, "renderFplIQ");
+  safeRender(renderGotAway, "renderGotAway");
+  safeRender(renderFplCourt, "renderFplCourt");
 
   renderDeadline();
   setInterval(renderDeadline, 1000);
@@ -3808,6 +3948,9 @@ async function boot(){
       safeRender(renderBingoCard, "renderBingoCard (live refresh)");
       safeRender(renderManagerDNA, "renderManagerDNA (live refresh)");
       safeRender(renderDerby, "renderDerby (live refresh)");
+      safeRender(renderFplIQ, "renderFplIQ (live refresh)");
+      safeRender(renderGotAway, "renderGotAway (live refresh)");
+      safeRender(renderFplCourt, "renderFplCourt (live refresh)");
       safeRender(renderPrize, "renderPrize (live refresh)");
       safeRender(renderTransferActivity, "renderTransferActivity (live refresh)"); // this is the whole point pre-deadline — transfers change minute to minute
       if(IS_FINAL) clearInterval(liveRefresh); // fully settled — stop polling
