@@ -408,6 +408,53 @@ async function main() {
       entries: gwSquadsRollup,
       syncedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
+
+    // Ghost Teams — three synthetic "managers" with fixed personalities,
+    // recomputed fresh from real league ownership every gameweek (no memory
+    // needed between weeks, so nothing can drift):
+    //   Algorithm — most-owned XI in the league, captains the most-owned player
+    //   Robot     — same XI, but captains whoever was most-CAPTAINED instead
+    //   Madman    — the exact opposite: least-owned XI, captains the least-owned player
+    const ownershipCount = {};
+    const captainCount = {};
+    Object.values(gwSquadsRollup).forEach((entry) => {
+      entry.starting.forEach((id) => { ownershipCount[id] = (ownershipCount[id] || 0) + 1; });
+      if (entry.captain) captainCount[entry.captain] = (captainCount[entry.captain] || 0) + 1;
+    });
+    const byPosition = { 1: [], 2: [], 3: [], 4: [] }; // GKP, DEF, MID, FWD
+    Object.keys(ownershipCount).forEach((idStr) => {
+      const id = parseInt(idStr);
+      const p = players.get(id);
+      if (p) byPosition[p.element_type].push({ id, count: ownershipCount[id] });
+    });
+    const pickXI = (sortDir) => {
+      const sorted = (arr) => [...arr].sort((a, b) => sortDir * (b.count - a.count));
+      return [
+        ...sorted(byPosition[1]).slice(0, 1),
+        ...sorted(byPosition[2]).slice(0, 4),
+        ...sorted(byPosition[3]).slice(0, 4),
+        ...sorted(byPosition[4]).slice(0, 2),
+      ].map((x) => x.id);
+    };
+    const templateXI = pickXI(1);
+    const differentialXI = pickXI(-1);
+    const scoreXI = (xi, captainId) =>
+      xi.reduce((sum, id) => sum + (livePointsByElement[id] || 0) * (id === captainId ? 2 : 1), 0);
+
+    const mostOwned = Object.entries(ownershipCount).sort((a, b) => b[1] - a[1])[0];
+    const mostCaptained = Object.entries(captainCount).sort((a, b) => b[1] - a[1])[0];
+    const leastOwned = Object.entries(ownershipCount).sort((a, b) => a[1] - b[1])[0];
+    const algorithmCaptain = mostOwned ? parseInt(mostOwned[0]) : null;
+    const robotCaptain = mostCaptained ? parseInt(mostCaptained[0]) : algorithmCaptain;
+    const madmanCaptain = leastOwned ? parseInt(leastOwned[0]) : null;
+
+    await db.doc(`ghostTeams/gw${gw}`).set({
+      gw,
+      algorithm: { starting: templateXI, captain: algorithmCaptain, points: scoreXI(templateXI, algorithmCaptain) },
+      robot: { starting: templateXI, captain: robotCaptain, points: scoreXI(templateXI, robotCaptain) },
+      madman: { starting: differentialXI, captain: madmanCaptain, points: scoreXI(differentialXI, madmanCaptain) },
+      syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
   }
   if (gw && Object.keys(gwTransfersRollup).length > 0) {
     await db.doc(`gameweekTransfers/gw${gw}`).set({
