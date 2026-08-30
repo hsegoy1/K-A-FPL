@@ -119,6 +119,9 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 }
 
 .section-title{font-family:var(--font-d);font-size:16px;font-weight:700;margin:16px 0 10px;display:flex;align-items:center;gap:8px;}
+.new-badge{font-family:var(--font-m);font-size:9px;font-weight:800;background:var(--grad);color:#0D0715;padding:2px 7px;border-radius:8px;letter-spacing:.04em;cursor:pointer;animation:newPulse 1.6s ease-in-out infinite;}
+@keyframes newPulse{0%,100%{opacity:1;}50%{opacity:.55;}}
+.admin-note-live{background:rgba(255,210,63,.1);border:1px solid rgba(255,210,63,.3);border-radius:10px;padding:9px 11px;font-size:11px;color:var(--gold);margin-top:10px;line-height:1.5;}
 .section-title .bar{width:3px;height:14px;background:var(--grad);border-radius:2px;}
 
 .row{display:flex;align-items:center;gap:12px;background:var(--panel-glass);backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);border:1px solid var(--line);border-radius:var(--radius);padding:11px 12px;margin-bottom:8px;cursor:pointer;opacity:0;transform:translateY(8px);animation:rowIn .4s ease forwards;}
@@ -974,21 +977,132 @@ let awardMedia = {};  // { awardId: {soundUrl, gifUrl} }
 let prizeConfig = null;
 let playlistTracks = []; // [{name, url}] — shared queue, everyone hears the same list
 let introSoundUrl = null; // one global intro sting, plays with the badge reveal
+let featureOverrides = {}; // { featureId: {enabled:bool, forceUnlock:bool} } — admin control over the season-long feature rollout
 
 async function loadAdminData(){
-  const [clubSnap, mediaSnap, prizeSnap, playlistSnap, introSnap] = await Promise.all([
+  const [clubSnap, mediaSnap, prizeSnap, playlistSnap, introSnap, overridesSnap] = await Promise.all([
     getDocs(collection(db, "clubAssets")),
     getDocs(collection(db, "awardMedia")),
     getDoc(doc(db, "adminConfig/prize")),
     getDoc(doc(db, "adminConfig/playlist")),
     getDoc(doc(db, "adminConfig/introSound")),
+    getDoc(doc(db, "adminConfig/featureOverrides")),
   ]);
   clubSnap.docs.forEach(d => { clubAssets[d.id] = d.data(); });
   mediaSnap.docs.forEach(d => { awardMedia[d.id] = d.data(); });
   prizeConfig = prizeSnap.exists() ? prizeSnap.data() : { ...DEFAULT_PRIZE_CONFIG };
   playlistTracks = playlistSnap.exists() ? (playlistSnap.data().tracks || []) : [];
   introSoundUrl = introSnap.exists() ? (introSnap.data().url || null) : null;
+  featureOverrides = overridesSnap.exists() ? (overridesSnap.data().overrides || {}) : {};
 }
+
+// =====================================================================
+// FEATURE REGISTRY — the single source of truth for the season-long
+// progressive rollout. Every gated feature is built and shipped now, but
+// stays invisible (no DOM, no Firestore reads, no event listeners) until
+// its minGW is reached. Admin can override any of this from the Feature
+// Control panel without needing a new code push.
+// =====================================================================
+const FEATURE_REGISTRY = {
+  // RITUALS
+  lockIn:          { title: "The Lock-In",              minGW: 1,  category: "ritual" },
+  autopsy:         { title: "The Autopsy",               minGW: 3,  category: "ritual", requiresFinal: true },
+  gwBingo:         { title: "GW Bingo",                  minGW: 1,  category: "ritual" },
+  transferShaming: { title: "Transfer Shaming",          minGW: 2,  category: "ritual" },
+
+  // INTELLIGENCE
+  fixtureWeather:  { title: "Fixture Weather",           minGW: 2,  category: "insight" },
+  managerDNA:      { title: "Manager DNA",               minGW: 5,  category: "insight" },
+  diffDanger:      { title: "Differential Danger",       minGW: 6,  category: "insight" },
+  deathPlayer:     { title: "The Death Player",          minGW: 10, category: "insight" },
+  lostPoints:      { title: "Lost Points Index",         minGW: 8,  category: "insight" },
+  actualVsPerfect: { title: "Actual vs Perfect You",     minGW: 10, category: "insight" },
+  whatIf:          { title: "What-If Machine",           minGW: 15, category: "simulation" },
+  butterflyEffect: { title: "Butterfly Effect",          minGW: 25, category: "insight" },
+  playerBattleground: { title: "Ownership Battleground", minGW: 10, category: "insight" },
+
+  // DRAMA
+  derby:           { title: "H2H Derby",                 minGW: 4,  category: "social" },
+  pressConference: { title: "Press Conference",          minGW: 7,  category: "social", requiresFinal: true },
+  fplCourt:        { title: "FPL Court",                 minGW: 10, category: "social", requiresFinal: true },
+  ghostTeams:      { title: "Ghost Teams",                minGW: 1,  category: "social" },
+  microBanter:     { title: "Micro Banter",              minGW: 12, category: "social" },
+  whoCopiedWho:    { title: "Who Copied Who?",           minGW: 8,  category: "social" },
+
+  // COMPETITION
+  powerRankings:   { title: "Power Rankings",            minGW: 12, category: "competition" },
+  stockMarket:     { title: "GW Stock Market",           minGW: 18, category: "competition" },
+  clutchIndex:     { title: "Clutch Index",              minGW: 20, category: "competition" },
+  pressureZones:   { title: "Pressure Zones",            minGW: 20, category: "competition" },
+  prizeBattle:     { title: "Prize Battle",              minGW: 25, category: "competition" },
+  titleRace:       { title: "Title Race Engine",         minGW: 25, category: "competition" },
+  ifThisThenThat:  { title: "If This, Then That",        minGW: 25, category: "competition" },
+  finalThreats:    { title: "Final Day Threats",         minGW: 35, category: "competition" },
+  allOutAttack:    { title: "All-Out Attack",            minGW: 10, category: "special", adminTrigger: true },
+
+  // FINALE
+  warRoom:         { title: "GW38 War Room",             minGW: 38, category: "finale" },
+  broadcastMode:   { title: "Broadcast Mode",            minGW: 38, category: "finale" },
+  legacyScore:     { title: "Legacy Score",              minGW: 38, category: "finale", requiresFinal: true },
+  seasonReport:    { title: "Season Report",             minGW: 38, category: "finale", requiresFinal: true },
+
+  // META / RECORDS
+  recordBook:      { title: "League Record Book",        minGW: 12, category: "meta" },
+  achievements:    { title: "Achievements",              minGW: 10, category: "meta" },
+  managerEvolution:{ title: "Manager Evolution",         minGW: 12, category: "meta" },
+  seasonStory:     { title: "Season Story",              minGW: 20, category: "meta" },
+  secretAwards:    { title: "Secret Awards",             minGW: 20, category: "meta" },
+  greatCollapse:   { title: "The Great Collapse",        minGW: 20, category: "meta" },
+  miracleWeek:     { title: "Miracle Week",              minGW: 15, category: "meta" },
+  comebackKing:    { title: "Comeback King",             minGW: 15, category: "meta" },
+  transferLab:     { title: "Transfer Lab",              minGW: 8,  category: "meta" },
+  transferHallOfShame: { title: "Transfer Hall of Shame",minGW: 12, category: "meta" },
+  oneThatGotAway:  { title: "The One That Got Away",     minGW: 15, category: "meta" },
+  efficiencyLeague:{ title: "Efficiency League",         minGW: 18, category: "meta" },
+  fplIQ:           { title: "FPL IQ",                    minGW: 15, category: "meta" },
+  seasonMeta:      { title: "Tactical Meta",             minGW: 15, category: "meta" },
+  liveCommentary:  { title: "Live Commentary",           minGW: 20, category: "live" },
+};
+
+// Set from the Admin panel's "preview as GW ___" control — lets admin see
+// what the site will look like at a future gameweek without touching real
+// data. null means "use the real live GW_COUNT", which is what everyone
+// else always sees regardless of what admin is previewing.
+let previewGwOverride = null;
+function effectiveGwForGating(){ return previewGwOverride !== null ? previewGwOverride : GW_COUNT; }
+
+function featureUnlocked(featureId){
+  const cfg = FEATURE_REGISTRY[featureId];
+  if(!cfg) return false;
+  const override = featureOverrides[featureId];
+  if(override?.enabled === false) return false; // admin explicitly turned it off
+  if(override?.forceUnlock === true) return true; // admin explicitly turned it on early
+  if(effectiveGwForGating() < cfg.minGW) return false;
+  if(cfg.requiresFinal && !IS_FINAL) return false;
+  return true;
+}
+function featureJustUnlocked(featureId){
+  const cfg = FEATURE_REGISTRY[featureId];
+  if(!cfg) return false;
+  return effectiveGwForGating() === cfg.minGW;
+}
+
+// ---------- "NEW" badge — pulses on a freshly-unlocked feature's section
+// title until tapped. featureJustUnlocked() already naturally stops being
+// true once the season moves to the next gameweek (roughly a week later),
+// so this only needs to track the "tapped to dismiss early" case.
+function isNewBadgeDismissed(featureId){
+  return !!localStorage.getItem(`fpl_new_dismissed_${featureId}`);
+}
+function dismissNewBadge(featureId){
+  localStorage.setItem(`fpl_new_dismissed_${featureId}`, Date.now().toString());
+  document.querySelectorAll(`.new-badge[data-feature="${featureId}"]`).forEach(b => b.remove());
+}
+function newBadgeHtml(featureId){
+  if(!featureJustUnlocked(featureId) || isNewBadgeDismissed(featureId)) return "";
+  return `<span class="new-badge" data-feature="${featureId}" onclick="dismissNewBadge('${featureId}')">NEW</span>`;
+}
+window.dismissNewBadge = dismissNewBadge; // needed since the badge is built via innerHTML, not a real event listener
 
 function getCustomCrest(code){ return clubAssets[code]?.crestUrl || null; }
 function crestSvg(code, uid){
@@ -1581,6 +1695,7 @@ function openAdminPanel(tab){
       <button class="cap-gw-pill ${tab==='intro'?'on':''}" data-tab="intro">✨ Intro</button>
       <button class="cap-gw-pill ${tab==='prize'?'on':''}" data-tab="prize">💰 Prize Setup</button>
       <button class="cap-gw-pill ${tab==='activity'?'on':''}" data-tab="activity">📊 Activity</button>
+      <button class="cap-gw-pill ${tab==='features'?'on':''}" data-tab="features">🚀 Feature Control</button>
     </div>
     <div id="admin-tab-body"></div>
   `);
@@ -1593,6 +1708,7 @@ function openAdminPanel(tab){
   else if(tab === "playlist") renderAdminPlaylistTab();
   else if(tab === "intro") renderAdminIntroTab();
   else if(tab === "activity") renderAdminActivityTab();
+  else if(tab === "features") renderAdminFeatureControlTab();
   else renderAdminPrizeTab();
 }
 
@@ -1841,6 +1957,81 @@ async function renderAdminActivityTab(){
       </div>
     `).join("")}
   `;
+}
+
+// ---------- Admin: Feature Control — the season-long rollout dashboard ----------
+const CATEGORY_LABELS = {
+  ritual: "🔁 Rituals", insight: "🧠 Intelligence", simulation: "🧪 Simulation",
+  social: "🎭 Drama", competition: "🏆 Competition", special: "⚡ Special",
+  finale: "🏁 Finale", meta: "📚 Meta / Records", live: "📡 Live",
+};
+function renderAdminFeatureControlTab(){
+  const currentGw = effectiveGwForGating();
+  const entries = Object.entries(FEATURE_REGISTRY);
+  const byCategory = {};
+  entries.forEach(([id, cfg]) => {
+    if(!byCategory[cfg.category]) byCategory[cfg.category] = [];
+    byCategory[cfg.category].push([id, cfg]);
+  });
+
+  const previewNote = previewGwOverride !== null
+    ? `<div class="admin-note-live">👁️ Previewing as GW${previewGwOverride} — this only lives in your current browser tab. Nobody else sees it, and it resets on its own the next time you reload — nothing to remember to undo.</div>`
+    : "";
+
+  document.getElementById("admin-tab-body").innerHTML = `
+    <p class="sub" style="margin-bottom:10px">Every feature is already built — this controls when it actually shows up. Default follows the real gameweek automatically; override any single one if you need to.</p>
+    <div class="admin-field">
+      <label>Preview As Gameweek (doesn't affect real data or other visitors)</label>
+      <div style="display:flex;gap:8px;">
+        <input type="number" id="preview-gw-input" min="1" max="38" placeholder="Real: GW${GW_COUNT}" value="${previewGwOverride ?? ''}" style="flex:1;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:8px;padding:9px 10px;color:var(--text);font-family:var(--font-m);" />
+        <button class="upload-mini-btn" id="preview-gw-clear">Clear</button>
+      </div>
+    </div>
+    ${previewNote}
+    <div class="section-title" style="margin-top:16px;"><span class="bar"></span>Currently viewing as GW${currentGw}</div>
+    ${Object.entries(byCategory).map(([cat, feats]) => `
+      <div class="section-title" style="font-size:13px;">${CATEGORY_LABELS[cat] || cat}</div>
+      ${feats.map(([id, cfg]) => {
+        const override = featureOverrides[id];
+        const unlocked = featureUnlocked(id);
+        const overrideState = override?.forceUnlock ? "forceOn" : override?.enabled === false ? "forceOff" : "default";
+        return `
+        <div class="club-upload-row">
+          <div style="flex:1;">
+            <div style="font-weight:600;font-size:12.5px;">${cfg.title} ${unlocked ? '<span style="color:var(--green)">● live</span>' : '<span style="color:var(--muted)">○ locked</span>'}</div>
+            <div class="sub" style="margin:0;">GW${cfg.minGW}${cfg.requiresFinal ? ' · needs bonus confirmed' : ''}</div>
+          </div>
+          <select class="feature-override-select" data-feature="${id}" style="background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:8px;padding:6px 8px;color:var(--text);font-size:11px;">
+            <option value="default" ${overrideState==='default'?'selected':''}>Auto (default)</option>
+            <option value="forceOn" ${overrideState==='forceOn'?'selected':''}>Force ON</option>
+            <option value="forceOff" ${overrideState==='forceOff'?'selected':''}>Force OFF</option>
+          </select>
+        </div>`;
+      }).join("")}
+    `).join("")}
+  `;
+
+  document.getElementById("preview-gw-input").addEventListener("change", (e) => {
+    const val = e.target.value.trim();
+    previewGwOverride = val === "" ? null : Math.max(1, Math.min(38, parseInt(val)||1));
+    renderAdminFeatureControlTab();
+  });
+  document.getElementById("preview-gw-clear").addEventListener("click", () => {
+    previewGwOverride = null;
+    renderAdminFeatureControlTab();
+  });
+  document.querySelectorAll(".feature-override-select").forEach(sel => {
+    sel.addEventListener("change", async () => {
+      const id = sel.dataset.feature;
+      const state = sel.value;
+      if(state === "default") delete featureOverrides[id];
+      else if(state === "forceOn") featureOverrides[id] = { forceUnlock: true };
+      else featureOverrides[id] = { enabled: false };
+      await setDoc(doc(db, "adminConfig/featureOverrides"), { overrides: featureOverrides });
+      showToast(`${FEATURE_REGISTRY[id].title} — ${state === 'default' ? 'back to automatic' : state === 'forceOn' ? 'forced ON for everyone' : 'forced OFF for everyone'}`);
+      renderAdminFeatureControlTab();
+    });
+  });
 }
 
 function getAwardGif(id){ return awardMedia[id]?.gifUrl || null; }
