@@ -249,6 +249,7 @@ async function main() {
   const gwSquadsRollup = {}; // compact league-wide snapshot for this GW — powers Template/Differential/Doppelgänger without 30 separate reads
   const gwTransfersRollup = {}; // who moved who in/out FOR this gw, league-wide — powers the Transfer Activity insight
   const nextGwTransfersRollup = {}; // transfers already banked for the UPCOMING gw, made during the current pre-deadline window
+  const managerHistoryMap = {}; // entryId -> fullHistory — shared by DNA, FPL IQ, and other features needing season-long data
 
   for (const m of managers) {
     const entryId = m.entry;
@@ -316,6 +317,7 @@ async function main() {
       }));
     const fullHistory = (liveEntry ? [...confirmedHistory, liveEntry] : confirmedHistory)
       .sort((a, b) => a.gw - b.gw);
+    managerHistoryMap[entryId] = { entryId, entry_name: m.entry_name, player_name: m.player_name, fullHistory };
     const thisGw = fullHistory.find((h) => h.gw === gw) || null;
 
     const captainPickId = picks?.picks?.find((p) => p.is_captain)?.element;
@@ -535,8 +537,7 @@ async function main() {
     });
   }
 
-  // GW Bingo — compute which squares each manager hit this gameweek.
-  // The 24 non-free squares are defined once; each manager gets a
+  // GW Bingo — compute which squares each manager hit this gameweek.  // The 24 non-free squares are defined once; each manager gets a
   // deterministically shuffled card (seeded by entryId × gw so it's
   // always the same card for that person, just different from their
   // neighbours'). Ghost team scores read from the block computed above.
@@ -619,13 +620,16 @@ async function main() {
 
   // Manager DNA — classify each manager's playing style from their season-long
   // decisions. Runs every sync, scores update as more data accumulates.
-  await computeManagerDNA(managers, gw);
+  await computeManagerDNA(managerHistoryMap, gw);
+  await computeFplIQ(managerHistoryMap, gw);
+  await computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsByElement, gw);
 
   // AI-generated gameweek recap ("The Autopsy") — same reasoning as
   // mwWinners above: only once bonus points are confirmed, so the story
   // isn't narrated off numbers that could still shift.
   if (isFinal) {
     await generateAutopsyIfNeeded(gw, { gwWinner, gwLoser, biggestBench, mostHits, mostCaptained, avgPoints });
+    await generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints);
   }
 
   console.log(`Synced GW${gw}. Winner: ${gwWinner?.managerName} (${gwWinner?.gwPoints} pts)`);
@@ -674,45 +678,31 @@ Facts:
 // Manager DNA — classifies each manager's season-long playing style from
 // their actual decisions. Scores 5 traits (0-100 each) and picks the
 // dominant archetype. Needs at least 3 gameweeks of data to be meaningful.
-async function computeManagerDNA(allManagers, currentGw) {
-  if (currentGw < 3) return; // not enough history to say anything meaningful
+async function computeManagerDNA(managerHistoryMap, currentGw) {
+  if (currentGw < 3) return;
   const writes = [];
-  for (const m of allManagers) {
-    if (!m.history || m.history.length < 2) continue;
-    const history = m.history.filter(h => h.gw <= currentGw);
+  for (const [entryId, m] of Object.entries(managerHistoryMap)) {
+    const history = m.fullHistory.filter(h => h.gw <= currentGw);
+    if (history.length < 2) continue;
     const gwCount = history.length;
-    // Gambler: high hit rate
     const totalHits = history.reduce((s,h) => s+(h.transferCost||0), 0);
-    const hitRate = totalHits / gwCount;
-    const gamblerScore = Math.min(100, Math.round(hitRate * 12.5));
-    // Template: low transfer activity (set & forget style)
+    const gamblerScore = Math.min(100, Math.round(totalHits / gwCount * 12.5));
     const totalTransfers = history.reduce((s,h) => s+(h.transfers||0), 0);
     const templateScore = Math.max(0, 100 - Math.round((totalTransfers/gwCount)*25));
-    // Consistent: low variance in scores
     const scores = history.map(h=>h.points||0);
     const mean = scores.reduce((s,v)=>s+v,0)/scores.length;
     const variance = scores.reduce((s,v)=>s+Math.pow(v-mean,2),0)/scores.length;
-    const stdDev = Math.sqrt(variance);
-    const consistencyScore = Math.max(0, 100 - Math.round(stdDev*2.5));
-    // Clutch: scores above league average in high-stakes weeks (approximated by rank improvement)
+    const consistencyScore = Math.max(0, 100 - Math.round(Math.sqrt(variance)*2.5));
     const rankImprovements = history.filter((h,i)=>i>0&&h.rank<history[i-1].rank).length;
     const clutchScore = Math.round((rankImprovements/Math.max(gwCount-1,1))*100);
-    // Differential: approximated by transfer activity + high single-week peaks
     const peakScore = Math.max(...scores);
     const differentialScore = Math.min(100, Math.round((peakScore/100)*50 + (totalTransfers/gwCount)*10));
-
     const traits = { gambler: gamblerScore, template: templateScore, consistent: consistencyScore, clutch: clutchScore, differential: differentialScore };
     const topTrait = Object.entries(traits).sort((a,b)=>b[1]-a[1])[0][0];
-    const ARCHETYPES = {
-      gambler: "🎲 Gambler",
-      template: "📋 Set & Forget",
-      consistent: "🪨 Steady Eddie",
-      clutch: "⚡ Clutch Player",
-      differential: "🦄 Contrarian",
-    };
-    writes.push(db.doc(`managerDNA/${m.entryId}`).set({
-      entryId: m.entryId,
-      teamName: m.entry_name || m.teamName,
+    const ARCHETYPES = { gambler:"🎲 Gambler", template:"📋 Set & Forget", consistent:"🪨 Steady Eddie", clutch:"⚡ Clutch Player", differential:"🦄 Contrarian" };
+    writes.push(db.doc(`managerDNA/${entryId}`).set({
+      entryId: parseInt(entryId),
+      teamName: m.entry_name,
       archetype: ARCHETYPES[topTrait],
       traits,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -722,6 +712,150 @@ async function computeManagerDNA(allManagers, currentGw) {
     await Promise.all(writes);
     console.log(`Manager DNA computed for ${writes.length} managers`);
   }
+}
+
+// FPL IQ — a composite decision-quality score based on season-long behaviour.
+// Four pillars: hit control (avoiding costly transfers), consistency,
+// bench management (not wasting points on unused subs), and relative
+// performance (beating the field). Unlocks at GW5, improves over the season.
+async function computeFplIQ(managerHistoryMap, currentGw) {
+  if (currentGw < 5) return;
+  const allScores = Object.values(managerHistoryMap)
+    .map(m => m.fullHistory.filter(h => h.gw <= currentGw).map(h => h.points||0))
+    .flat();
+  const leagueAvg = allScores.length > 0 ? allScores.reduce((s,v)=>s+v,0)/allScores.length : 40;
+  const writes = [];
+  for (const [entryId, m] of Object.entries(managerHistoryMap)) {
+    const history = m.fullHistory.filter(h => h.gw <= currentGw);
+    if (history.length < 3) continue;
+    const gwCount = history.length;
+    const scores = history.map(h=>h.points||0);
+    const mean = scores.reduce((s,v)=>s+v,0)/gwCount;
+    // Hit Control: every 4 pts spent on hits = -1 IQ point. Cap at 100.
+    const totalHits = history.reduce((s,h)=>s+(h.transferCost||0),0);
+    const hitIQ = Math.max(0, 100 - Math.round(totalHits * 2.5));
+    // Consistency: inverse of normalised standard deviation
+    const variance = scores.reduce((s,v)=>s+Math.pow(v-mean,2),0)/gwCount;
+    const consistencyIQ = Math.max(0, 100 - Math.round(Math.sqrt(variance)*2));
+    // Bench Management: lower bench waste is better
+    const totalBench = history.reduce((s,h)=>s+(h.benchPoints||0),0);
+    const benchIQ = Math.max(0, 100 - Math.round((totalBench/gwCount)*2));
+    // Relative Performance: % of weeks above league average
+    const aboveAvg = scores.filter(s=>s>leagueAvg).length;
+    const relativeIQ = Math.round((aboveAvg/gwCount)*100);
+    const iq = Math.round(hitIQ*0.30 + consistencyIQ*0.25 + benchIQ*0.25 + relativeIQ*0.20);
+    const label = iq>=85?"🧠 Elite":iq>=70?"🎓 Sharp":iq>=55?"📚 Learning":iq>=40?"🤔 Questionable":"💀 What Are You Doing";
+    writes.push(db.doc(`fplIQ/${entryId}`).set({
+      entryId: parseInt(entryId),
+      teamName: m.entry_name,
+      iq,
+      label,
+      breakdown: { hitIQ, consistencyIQ, benchIQ, relativeIQ },
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }));
+  }
+  if (writes.length > 0) {
+    await Promise.all(writes);
+    console.log(`FPL IQ computed for ${writes.length} managers`);
+  }
+}
+
+// The One That Got Away — every player transferred out lives on in
+// this doc, accumulating points they scored in every subsequent GW.
+// Incrementally updated each sync so we never need to re-read past GWs.
+async function computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsByElement, gw) {
+  const reads = Object.keys(managerHistoryMap).map(id => db.doc(`gotAway/${id}`).get());
+  const snaps = await Promise.all(reads);
+  const writes = [];
+  snaps.forEach((snap, i) => {
+    const entryId = parseInt(Object.keys(managerHistoryMap)[i]);
+    const m = Object.values(managerHistoryMap)[i];
+    const existing = snap.exists ? snap.data() : { players: [] };
+    // Update existing tracked players with this GW's points
+    let players = (existing.players || []).map(p => ({
+      ...p,
+      pointsSince: (p.pointsSince||0) + (livePointsByElement[p.elementId]||0),
+      lastGw: gw,
+    }));
+    // Add newly transferred-out players from this GW
+    const transfers = gwTransfersRollup[entryId];
+    if (transfers?.transfersOut) {
+      const trackedIds = new Set(players.map(p=>p.elementId));
+      transfers.transfersOut.forEach(elementId => {
+        if (!trackedIds.has(elementId)) {
+          const p = playersMeta[elementId];
+          players.push({ elementId, name: p?.n||"Unknown", soldGw: gw, pointsSince: 0, lastGw: gw });
+        }
+      });
+    }
+    // Keep top 8 by regret (most points since sold) to avoid unbounded growth
+    players.sort((a,b)=>b.pointsSince-a.pointsSince);
+    if (players.length > 8) players = players.slice(0,8);
+    writes.push(db.doc(`gotAway/${entryId}`).set({
+      entryId,
+      teamName: m.entry_name,
+      players,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }));
+  });
+  if (writes.length > 0) {
+    await Promise.all(writes);
+    console.log(`Got Away updated for ${writes.length} managers`);
+  }
+}
+
+// FPL Court — AI-generated weekly tribunal once bonus points confirm.
+// Finds the most dramatic "crime" of the week, then generates prosecution
+// and defence arguments. Only runs once per finalized GW.
+async function generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints) {
+  if (gw < 10) return;
+  const ref = db.doc(`fplCourt/gw${gw}`);
+  const existing = await ref.get();
+  if (existing.exists) return;
+  // Find the defendant: manager with highest bench points (biggest waste)
+  // — the most visually dramatic FPL crime, every single week
+  const defendant = [...gwResults].sort((a,b)=>b.benchPoints-a.benchPoints)[0];
+  if (!defendant || defendant.benchPoints < 4) return;
+  const squad = gwSquadsRollup[defendant.entryId];
+  const bestBench = squad?.bench
+    ?.map(id=>({ id, pts: livePointsByElement[id]||0 }))
+    ?.sort((a,b)=>b.pts-a.pts)?.[0];
+  const facts = [
+    `Defendant: ${defendant.teamName} (managed by ${defendant.managerName})`,
+    `Crime: Left ${defendant.benchPoints} points on the bench unused this gameweek`,
+    bestBench ? `Key exhibit: ${playersMeta[bestBench.id]?.n||'Unknown'} scored ${bestBench.pts} points while watching from the bench` : null,
+    `Their actual score: ${defendant.gwPoints} points (league average was ${Math.round(avgPoints)} pts)`,
+    `The bench points, if played, would have put them ${defendant.benchPoints>0?'higher':'lower'} in the GW standings`,
+  ].filter(Boolean);
+  const prompt = `You are a judge at "FPL Court", a mock tribunal for the worst Fantasy Premier League decision of the week in an office mini-league called K&A Paid FPL.
+
+The defendant is ${defendant.teamName}. Generate a short, punchy court case in two parts:
+1. PROSECUTION (2-3 sentences): Make the case against them. Be dramatic and funny.
+2. DEFENCE (2-3 sentences): Their best possible excuse. Be sympathetic but still funny.
+
+Facts of the case:
+${facts.map(f=>`- ${f}`).join('\n')}
+
+Return ONLY a JSON object with keys "prosecution" and "defence". No markdown, no extra text.`;
+  const text = await callOpenRouter(prompt, 400);
+  if (!text) return;
+  let parsed;
+  try {
+    const clean = text.replace(/```json|```/g,'').trim();
+    parsed = JSON.parse(clean);
+  } catch(e) {
+    console.log(`FPL Court GW${gw}: AI returned non-JSON, skipping`);
+    return;
+  }
+  await ref.set({
+    gw,
+    defendant: { entryId: defendant.entryId, teamName: defendant.teamName, managerName: defendant.managerName, crime: `${defendant.benchPoints} bench points wasted` },
+    prosecution: parsed.prosecution || "",
+    defence: parsed.defence || "",
+    verdict: null, // set by frontend voting
+    generatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  console.log(`FPL Court case generated for GW${gw} — defendant: ${defendant.teamName}`);
 }
 
 main().catch((err) => {
