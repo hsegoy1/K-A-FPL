@@ -99,6 +99,44 @@ async function main() {
   });
   await db.doc("teamsMeta/strength").set({ teams: teamStrength, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
 
+  // Official FPL Dream Team (Team of the Week) for the current GW.
+  // Also compute "Team of the Season so far" from bootstrap element totals —
+  // this gives us the best XI across ALL FPL players by accumulated points,
+  // not just players in our league, so it reads as genuinely authoritative.
+  if (gw) {
+    try {
+      const dreamTeam = await getJson(`${FPL_BASE}/dream-team/${gw}/`);
+      if (dreamTeam?.top_players?.length) {
+        await db.doc(`dreamTeam/gw${gw}`).set({
+          gw,
+          players: dreamTeam.top_players,
+          formation: dreamTeam.formation || null,
+          syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        console.log(`Dream Team GW${gw}: ${dreamTeam.top_players.length} players synced`);
+      }
+    } catch (e) {
+      console.log(`Dream Team GW${gw} fetch failed: ${e.message}`);
+    }
+  }
+  // Team of the Season — best XI by total FPL points this season so far,
+  // computed from the bootstrap data we already fetched.
+  const seasonPos = { 1:[], 2:[], 3:[], 4:[] };
+  bootstrap.elements.forEach(p => {
+    if (p.total_points > 0) {
+      seasonPos[p.element_type]?.push({ id: p.id, pts: p.total_points, n: p.web_name, team: teamsById.get(p.team)||"?" });
+    }
+  });
+  const seasonXI = [
+    ...seasonPos[1].sort((a,b)=>b.pts-a.pts).slice(0,1),
+    ...seasonPos[2].sort((a,b)=>b.pts-a.pts).slice(0,4),
+    ...seasonPos[3].sort((a,b)=>b.pts-a.pts).slice(0,4),
+    ...seasonPos[4].sort((a,b)=>b.pts-a.pts).slice(0,2),
+  ];
+  await db.doc("dreamTeam/season").set({
+    players: seasonXI,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
   // Track the CURRENT gameweek from the moment its deadline passes (kickoff),
   // not just once every match is over — this is what makes standings update
   // live as Saturday's games happen instead of sitting blank all weekend.
@@ -623,6 +661,7 @@ async function main() {
   await computeManagerDNA(managerHistoryMap, gw);
   await computeFplIQ(managerHistoryMap, gw);
   await computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsByElement, playersMeta, gw);
+  await computeLostPoints(gwResults, gwSquadsRollup, livePointsByElement, gw);
 
   // AI-generated gameweek recap ("The Autopsy") — same reasoning as
   // mwWinners above: only once bonus points are confirmed, so the story
@@ -630,6 +669,7 @@ async function main() {
   if (isFinal) {
     await generateAutopsyIfNeeded(gw, { gwWinner, gwLoser, biggestBench, mostHits, mostCaptained, avgPoints });
     await generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints, playersMeta);
+    await generatePressConferenceIfNeeded(gw, gwResults, avgPoints);
   }
 
   console.log(`Synced GW${gw}. Winner: ${gwWinner?.managerName} (${gwWinner?.gwPoints} pts)`);
@@ -856,6 +896,77 @@ Return ONLY a JSON object with keys "prosecution" and "defence". No markdown, no
     generatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
   console.log(`FPL Court case generated for GW${gw} — defendant: ${defendant.teamName}`);
+}
+
+// Lost Points Index — each GW, for each manager, finds bench players who
+// outscored the weakest starter and accumulates the "lost" gap all season.
+// Stored incrementally so each sync only needs current-GW data, not history.
+async function computeLostPoints(gwResults, gwSquadsRollup, livePointsByElement, gw) {
+  const writes = [];
+  for (const r of gwResults) {
+    const squad = gwSquadsRollup[r.entryId];
+    if (!squad) continue;
+    const startingPts = squad.starting.map(id => livePointsByElement[id] || 0);
+    const benchPts = squad.bench.map(id => livePointsByElement[id] || 0);
+    const worstStarter = Math.min(...startingPts);
+    const lostThisGw = benchPts.reduce((sum, bPts) => {
+      return bPts > worstStarter ? sum + (bPts - worstStarter) : sum;
+    }, 0);
+    if (lostThisGw === 0) continue;
+    // Increment the running total — merge:true means we add to whatever's there
+    writes.push(
+      db.doc(`lostPoints/${r.entryId}`).set({
+        entryId: r.entryId,
+        teamName: r.teamName,
+        totalLost: admin.firestore.FieldValue.increment(lostThisGw),
+        lastGw: gw,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true })
+    );
+  }
+  if (writes.length > 0) {
+    await Promise.all(writes);
+    console.log(`Lost Points updated for ${writes.length} managers (GW${gw})`);
+  }
+}
+
+// Press Conference — AI-generated post-match interview for the GW winner
+// and loser, styled like a real football press conference. Runs once per
+// finalized GW, never regenerated. Unlocks at GW7.
+async function generatePressConferenceIfNeeded(gw, gwResults, avgPoints) {
+  if (gw < 7) return;
+  const ref = db.doc(`pressConference/gw${gw}`);
+  const existing = await ref.get();
+  if (existing.exists) return;
+  const byPoints = [...gwResults].sort((a, b) => b.gwPoints - a.gwPoints);
+  const winner = byPoints[0];
+  const loser = byPoints[byPoints.length - 1];
+  if (!winner || !loser) return;
+  const prompt = `You are a fictional sports journalist covering "K&A Paid FPL", a 35-person office Fantasy Premier League mini-league. Write a funny, punchy post-match press conference for Gameweek ${gw}.
+
+Include TWO separate interview segments:
+1. The winner — ${winner.teamName} (${winner.managerName}) scored ${winner.gwPoints} points
+2. The loser — ${loser.teamName} (${loser.managerName}) scored ${loser.gwPoints} points (league average was ${Math.round(avgPoints)})
+
+Each segment: a journalist question, then the manager's answer (2-3 sentences). Keep it funny, like real football managers but in an FPL context. Plain text only, no markdown.
+
+Return ONLY a JSON object: { "winner": { "question": "...", "answer": "..." }, "loser": { "question": "...", "answer": "..." } }`;
+  const text = await callOpenRouter(prompt, 450);
+  if (!text) return;
+  let parsed;
+  try {
+    parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+  } catch (e) {
+    console.log(`Press Conference GW${gw}: AI returned non-JSON, skipping`);
+    return;
+  }
+  await ref.set({
+    gw,
+    winner: { entryId: winner.entryId, teamName: winner.teamName, points: winner.gwPoints, ...parsed.winner },
+    loser: { entryId: loser.entryId, teamName: loser.teamName, points: loser.gwPoints, ...parsed.loser },
+    generatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  console.log(`Press Conference generated for GW${gw}`);
 }
 
 main().catch((err) => {
