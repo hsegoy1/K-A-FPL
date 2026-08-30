@@ -16,6 +16,47 @@ if (!LEAGUE_ID) throw new Error("Missing FPL_LEAGUE_ID env var");
 const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
 if (!serviceAccountJson) throw new Error("Missing FIREBASE_SERVICE_ACCOUNT env var");
 
+// Optional — AI-generated narrative content (gameweek recaps, season story,
+// etc). Not required for the sync to work; features that need it just don't
+// generate until this is set, same pattern as every other optional piece
+// here. Never hardcode the actual key value — it lives only as a GitHub
+// Actions secret, read at runtime.
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+
+// Single reusable entry point for every AI-generated feature this season —
+// one place to swap models, adjust token limits, or add retry logic once,
+// rather than duplicating fetch calls across every feature that needs text.
+async function callOpenRouter(prompt, maxTokens = 600) {
+  if (!OPENROUTER_API_KEY) {
+    console.log("⚠️  OPENROUTER_API_KEY not set — skipping AI generation for this feature");
+    return null;
+  }
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "poolside/laguna-s-2.1:free",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: maxTokens,
+      }),
+    });
+    if (!res.ok) {
+      console.log(`⚠️  OpenRouter request failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
+      return null;
+    }
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content?.trim();
+    return text || null;
+  } catch (err) {
+    console.log(`⚠️  OpenRouter call errored: ${err.message}`);
+    return null;
+  }
+}
+
 admin.initializeApp({
   credential: admin.credential.cert(JSON.parse(serviceAccountJson)),
 });
@@ -430,7 +471,54 @@ async function main() {
     });
   }
 
+  // AI-generated gameweek recap ("The Autopsy") — same reasoning as
+  // mwWinners above: only once bonus points are confirmed, so the story
+  // isn't narrated off numbers that could still shift.
+  if (isFinal) {
+    await generateAutopsyIfNeeded(gw, { gwWinner, gwLoser, biggestBench, mostHits, mostCaptained, avgPoints });
+  }
+
   console.log(`Synced GW${gw}. Winner: ${gwWinner?.managerName} (${gwWinner?.gwPoints} pts)`);
+}
+
+// Only generates once per gameweek — checks Firestore first so a finalized
+// GW's story never gets silently (and wastefully) regenerated on every
+// subsequent 15-minute sync run within that same gameweek.
+async function generateAutopsyIfNeeded(gw, stats) {
+  const ref = db.doc(`autopsyReports/gw${gw}`);
+  const existing = await ref.get();
+  if (existing.exists) return;
+
+  const { gwWinner, gwLoser, biggestBench, mostHits, mostCaptained, avgPoints } = stats;
+  const facts = [
+    gwWinner ? `Winner: ${gwWinner.teamName} (${gwWinner.managerName}) with ${gwWinner.gwPoints} points` : null,
+    gwLoser ? `Bottom of the table this week: ${gwLoser.teamName} (${gwLoser.managerName}) with ${gwLoser.gwPoints} points` : null,
+    `League average score: ${Math.round(avgPoints * 10) / 10}`,
+    biggestBench && biggestBench.benchPoints > 0
+      ? `Most points wasted on the bench: ${biggestBench.teamName} left ${biggestBench.benchPoints} points unused`
+      : null,
+    mostHits && mostHits.transferCost > 0
+      ? `Biggest gambler: ${mostHits.teamName} took a ${mostHits.transferCost}-point hit on transfers`
+      : null,
+    mostCaptained ? `Most popular captain pick: ${mostCaptained[0]}, chosen by ${mostCaptained[1]} managers` : null,
+  ].filter(Boolean);
+
+  const prompt = `You are a witty sports journalist covering "K&A Paid FPL", a 35-person office Fantasy Premier League mini-league. Write a short, punchy Gameweek ${gw} recap — 3 short paragraphs, casual and funny, like a proper post-match column, referencing the real names and numbers given below. Don't invent any facts beyond what's listed. Plain text only, no markdown formatting, no headers.
+
+Facts:
+- ${facts.join("\n- ")}`;
+
+  const text = await callOpenRouter(prompt, 500);
+  if (!text) {
+    console.log(`Autopsy GW${gw}: skipped — no AI response (check OPENROUTER_API_KEY is set correctly)`);
+    return;
+  }
+  await ref.set({
+    text,
+    gw,
+    generatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  console.log(`Autopsy generated for GW${gw} (${text.length} chars)`);
 }
 
 main().catch((err) => {
