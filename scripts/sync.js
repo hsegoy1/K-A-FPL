@@ -622,14 +622,14 @@ async function main() {
   // decisions. Runs every sync, scores update as more data accumulates.
   await computeManagerDNA(managerHistoryMap, gw);
   await computeFplIQ(managerHistoryMap, gw);
-  await computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsByElement, gw);
+  await computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsByElement, playersMeta, gw);
 
   // AI-generated gameweek recap ("The Autopsy") — same reasoning as
   // mwWinners above: only once bonus points are confirmed, so the story
   // isn't narrated off numbers that could still shift.
   if (isFinal) {
     await generateAutopsyIfNeeded(gw, { gwWinner, gwLoser, biggestBench, mostHits, mostCaptained, avgPoints });
-    await generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints);
+    await generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints, playersMeta);
   }
 
   console.log(`Synced GW${gw}. Winner: ${gwWinner?.managerName} (${gwWinner?.gwPoints} pts)`);
@@ -763,7 +763,7 @@ async function computeFplIQ(managerHistoryMap, currentGw) {
 // The One That Got Away — every player transferred out lives on in
 // this doc, accumulating points they scored in every subsequent GW.
 // Incrementally updated each sync so we never need to re-read past GWs.
-async function computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsByElement, gw) {
+async function computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsByElement, playersMeta, gw) {
   const reads = Object.keys(managerHistoryMap).map(id => db.doc(`gotAway/${id}`).get());
   const snaps = await Promise.all(reads);
   const writes = [];
@@ -807,7 +807,7 @@ async function computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsBy
 // FPL Court — AI-generated weekly tribunal once bonus points confirm.
 // Finds the most dramatic "crime" of the week, then generates prosecution
 // and defence arguments. Only runs once per finalized GW.
-async function generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints) {
+async function generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints, playersMeta) {
   if (gw < 10) return;
   const ref = db.doc(`fplCourt/gw${gw}`);
   const existing = await ref.get();
