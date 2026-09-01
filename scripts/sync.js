@@ -26,35 +26,48 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 // Single reusable entry point for every AI-generated feature this season —
 // one place to swap models, adjust token limits, or add retry logic once,
 // rather than duplicating fetch calls across every feature that needs text.
+// Free-tier OpenRouter models share a pooled rate limit across everyone
+// using that specific model, so a busy period can 429 even with a valid
+// key — this isn't something a retry of the SAME model reliably fixes.
+// Instead, try each of these in order and use whichever responds first.
+const OPENROUTER_MODEL_CHAIN = [
+  "poolside/laguna-s-2.1:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "openai/gpt-oss-20b:free",
+];
 async function callOpenRouter(prompt, maxTokens = 600) {
   if (!OPENROUTER_API_KEY) {
     console.log("⚠️  OPENROUTER_API_KEY not set — skipping AI generation for this feature");
     return null;
   }
-  try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "poolside/laguna-s-2.1:free",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: maxTokens,
-      }),
-    });
-    if (!res.ok) {
-      console.log(`⚠️  OpenRouter request failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
-      return null;
+  for (const model of OPENROUTER_MODEL_CHAIN) {
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: maxTokens,
+        }),
+      });
+      if (!res.ok) {
+        console.log(`⚠️  OpenRouter (${model}) failed (${res.status}) — trying next model in the chain`);
+        continue;
+      }
+      const data = await res.json();
+      const text = data.choices?.[0]?.message?.content?.trim();
+      if (text) return text;
+      console.log(`⚠️  OpenRouter (${model}) returned no content — trying next model in the chain`);
+    } catch (err) {
+      console.log(`⚠️  OpenRouter (${model}) errored: ${err.message} — trying next model in the chain`);
     }
-    const data = await res.json();
-    const text = data.choices?.[0]?.message?.content?.trim();
-    return text || null;
-  } catch (err) {
-    console.log(`⚠️  OpenRouter call errored: ${err.message}`);
-    return null;
   }
+  console.log("⚠️  All OpenRouter models in the chain failed this run — will retry on the next sync");
+  return null;
 }
 
 admin.initializeApp({
