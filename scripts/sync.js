@@ -669,14 +669,22 @@ async function main() {
   await computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsByElement, playersMeta, gw);
   await computeLostPoints(gwResults, gwSquadsRollup, livePointsByElement, gw);
 
-  // AI-generated gameweek recap ("The Autopsy") — same reasoning as
-  // mwWinners above: only once bonus points are confirmed, so the story
-  // isn't narrated off numbers that could still shift.
-  if (isFinal) {
+  // AI-generated gameweek recap ("The Autopsy") — fires on WHICHEVER comes
+  // first: FPL's own official confirmation, or our own fixture-based
+  // "safely done" check (all matches finished + a comfortable buffer for
+  // bonus points to settle). This is what stops the recap sitting stuck
+  // for days if FPL is just slow to flip data_checked, without ever
+  // narrating a story off numbers that genuinely haven't finished yet.
+  const gwSafelyDone = await checkGwSafelyDoneForAI(gw);
+  if (isFinal || gwSafelyDone) {
     await generateAutopsyIfNeeded(gw, { gwWinner, gwLoser, biggestBench, mostHits, mostCaptained, avgPoints });
-    await generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints, playersMeta);
-    await generatePressConferenceIfNeeded(gw, gwResults, avgPoints);
   }
+  // These two check fixture-day readiness internally (see
+  // checkTodaysFixturesReady), so they're called every sync regardless of
+  // whole-GW isFinal status — they update themselves once each matchday's
+  // games actually finish, not just once at the very end of the gameweek.
+  await generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints, playersMeta);
+  await generatePressConferenceIfNeeded(gw, gwResults, avgPoints);
 
   console.log(`Synced GW${gw}. Winner: ${gwWinner?.managerName} (${gwWinner?.gwPoints} pts)`);
 }
@@ -874,6 +882,30 @@ async function checkTodaysFixturesReady(gw) {
   if (todaysFixtures.length === 0) return { ready: false, today }; // nothing scheduled today — don't spend a call
   const allDone = todaysFixtures.every((f) => f.finished);
   return { ready: allDone, today };
+}
+
+// A second, independent path to "is this gameweek safely done" for the
+// whole-GW AI recap (the Autopsy) — doesn't wait for FPL's own
+// data_checked flag, which can lag matches actually finishing by anywhere
+// from a few hours to a couple of days. Instead: every fixture in the GW
+// must show finished_provisional (a real result exists), AND enough
+// wall-clock time must have passed since the LAST kickoff for bonus
+// points to have realistically settled — matches run ~2.5h including
+// stoppage time, plus a comfortable buffer on top of that. Whichever of
+// this or the official isFinal flag comes true first is what triggers
+// generation; mwWinners (real prize money) intentionally does NOT use
+// this and stays on the strict official flag only.
+async function checkGwSafelyDoneForAI(gw) {
+  const snap = await db.doc(`gameweekFixtures/gw${gw}`).get();
+  if (!snap.exists) return false;
+  const fixtures = snap.data().fixtures || [];
+  if (fixtures.length === 0) return false;
+  const allFinished = fixtures.every((f) => f.finished);
+  if (!allFinished) return false;
+  const lastKickoff = Math.max(...fixtures.map((f) => new Date(f.kickoff).getTime()));
+  const MATCH_DURATION_MS = 2.5 * 60 * 60 * 1000; // ~2.5h covers 90 min + stoppage/halftime
+  const BONUS_BUFFER_MS = 4.5 * 60 * 60 * 1000;   // buffer for bonus points to realistically settle
+  return Date.now() >= lastKickoff + MATCH_DURATION_MS + BONUS_BUFFER_MS;
 }
 
 async function generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints, playersMeta) {
