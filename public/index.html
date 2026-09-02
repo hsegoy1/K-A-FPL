@@ -152,7 +152,7 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .shame-row .v{font-family:var(--font-m);color:var(--red);font-weight:700;flex-shrink:0;}
 .fx-weather{font-size:10px;}
 .bingo-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:10px;}
-.bingo-cell{background:var(--panel-glass);border:1px solid var(--line);border-radius:8px;padding:6px 3px;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-size:8.5px;color:var(--muted);line-height:1.3;transition:background .15s;}
+.bingo-cell{background:var(--panel-glass);border:1px solid var(--line);border-radius:8px;padding:6px 3px;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-size:8.5px;color:var(--muted);line-height:1.3;transition:background .15s;cursor:pointer;}
 .bingo-cell.hit{background:rgba(57,255,136,.12);border-color:rgba(57,255,136,.4);color:var(--green);}
 .bingo-cell.bingo-line{background:rgba(0,229,255,.12);border-color:rgba(0,229,255,.4);color:var(--accent2);}
 .bingo-cell.free{background:rgba(255,46,146,.12);border-color:rgba(255,46,146,.4);color:var(--accent1);font-weight:700;}
@@ -1616,31 +1616,31 @@ async function renderAutopsyCard(){
 
 // ---------- GW Bingo — personal card auto-ticked from real data ----------
 const BINGO_SQUARE_META = {
-  captain_blank:  { icon:"😬", text:"Captain blanks" },
-  haul_15:        { icon:"🔥", text:"Haul of 15+ pts" },
-  bench_beats:    { icon:"🪑", text:"Bench beats XI" },
-  hit_scores:     { icon:"🎯", text:"Hit player scores 8+" },
-  win_gw:         { icon:"🏆", text:"Win the GW" },
-  no_transfers:   { icon:"🔒", text:"No transfers" },
-  under_avg:      { icon:"📉", text:"Below league avg" },
-  diff_scores:    { icon:"🦄", text:"Diff scores 10+" },
-  best_on_bench:  { icon:"😭", text:"Best on bench" },
-  chip_played:    { icon:"⚡", text:"Chip played" },
-  algorithm_beats:{ icon:"🤖", text:"Algorithm beats you" },
-  robot_beats:    { icon:"⚙️", text:"Robot beats you" },
-  madman_beats:   { icon:"🎲", text:"Madman beats you" },
-  top_scorer:     { icon:"🏅", text:"Top points this GW" },
-  under_30:       { icon:"💀", text:"Score under 30" },
-  hattrick:       { icon:"⚽", text:"Hat-trick in squad" },
-  triple_captain: { icon:"3️⃣", text:"Triple captain" },
-  big_hit:        { icon:"🫠", text:"Hit of 8+ pts" },
-  clean_sheet:    { icon:"🧱", text:"Clean sheet scored" },
-  on_avg:         { icon:"📊", text:"Exactly on avg" },
-  captain_wins:   { icon:"🧠", text:"Captain beats all rivals'" },
-  climb_5:        { icon:"⬆️", text:"Climb 5+ places" },
-  top_3:          { icon:"🥉", text:"Top 3 overall" },
-  score_over_70:  { icon:"💥", text:"Score 70+ pts" },
-  free:           { icon:"✨", text:"FREE" },
+  captain_blank:  { icon:"😬", text:"Captain blanks",         detail:"Ticks if your captain scored fewer than 4 points this GW." },
+  haul_15:        { icon:"🔥", text:"Haul of 15+ pts",         detail:"Ticks if any starter in your XI scored 15 or more points." },
+  bench_beats:    { icon:"🪑", text:"Bench beats XI",          detail:"Ticks if your total bench points beat your starting XI's points." },
+  hit_scores:     { icon:"🎯", text:"Hit player scores 8+",    detail:"Ticks if you took a hit AND a starter scored 8 or more points." },
+  win_gw:         { icon:"🏆", text:"Win the GW",              detail:"Ticks if your score matched the highest score in the league this GW." },
+  no_transfers:   { icon:"🔒", text:"No transfers",            detail:"Ticks if you made zero transfers this gameweek." },
+  under_avg:      { icon:"📉", text:"Below league avg",        detail:"Ticks if you scored more than 2 points below the league average." },
+  diff_scores:    { icon:"🦄", text:"Diff scores 10+",         detail:"Ticks if a low-ownership player (2 or fewer owners) in your XI scored 10+." },
+  best_on_bench:  { icon:"😭", text:"Best on bench",           detail:"Ticks if your single highest scorer this GW was sat on your bench." },
+  chip_played:    { icon:"⚡", text:"Chip played",             detail:"Ticks if you played any chip this gameweek." },
+  algorithm_beats:{ icon:"🤖", text:"Algorithm beats you",     detail:"Ticks if the Algorithm ghost team outscored you this GW." },
+  robot_beats:    { icon:"⚙️", text:"Robot beats you",         detail:"Ticks if the Robot ghost team outscored you this GW." },
+  madman_beats:   { icon:"🎲", text:"Madman beats you",        detail:"Ticks if the Madman ghost team outscored you this GW." },
+  top_scorer:     { icon:"🏅", text:"Top points this GW",      detail:"Ticks if you had the single highest score in the league this GW." },
+  under_30:       { icon:"💀", text:"Score under 30",          detail:"Ticks if you scored fewer than 30 points this gameweek." },
+  hattrick:       { icon:"⚽", text:"Hat-trick in squad",      detail:"Ticks if any player in your starting XI scored a hat-trick." },
+  triple_captain: { icon:"3️⃣", text:"Triple captain",         detail:"Ticks if you played the Triple Captain chip this gameweek." },
+  big_hit:        { icon:"🫠", text:"Hit of 8+ pts",           detail:"Ticks if you took a transfer hit of 8 points or more." },
+  clean_sheet:    { icon:"🧱", text:"Clean sheet scored",      detail:"Ticks if a GK or defender in your XI kept a clean sheet." },
+  on_avg:         { icon:"📊", text:"Exactly on avg",          detail:"Ticks if your score landed within 1 point of the league average." },
+  captain_wins:   { icon:"🧠", text:"Captain beats all rivals'",detail:"Ticks if your captain's points beat every other manager's captain pick." },
+  climb_5:        { icon:"⬆️", text:"Climb 5+ places",         detail:"Ticks if you climbed 5 or more places in the overall table this GW." },
+  top_3:          { icon:"🥉", text:"Top 3 overall",           detail:"Ticks if you're currently sitting in the top 3 of the overall table." },
+  score_over_70:  { icon:"💥", text:"Score 70+ pts",           detail:"Ticks if you scored 70 or more points this gameweek." },
+  free:           { icon:"✨", text:"FREE",                    detail:"Free square — always counts, no condition to meet." },
 };
 function seededShuffleIds(arr, seed){
   const a=[...arr]; let s=seed;
@@ -1669,13 +1669,26 @@ async function renderBingoCard(){
   const bingoLineIdxs=new Set(BINGO_LINES.filter(l=>l.every(i=>hits[i])).flat());
   container.innerHTML=`
     <div class="bingo-grid">${card.map((sqId,i)=>{
-      const meta=BINGO_SQUARE_META[sqId]||{icon:"?",text:sqId};
+      const meta=BINGO_SQUARE_META[sqId]||{icon:"?",text:sqId,detail:""};
       const inLine=bingoLineIdxs.has(i);
       const cls=sqId==="free"?"bingo-cell free":inLine?"bingo-cell bingo-line":hits[i]?"bingo-cell hit":"bingo-cell";
-      return `<div class="${cls}"><div class="bingo-cell-icon">${meta.icon}</div>${meta.text}</div>`;
+      const statusWord = sqId==="free" ? "" : hits[i] ? " — hit ✓" : " — not hit yet";
+      return `<div class="${cls}" data-sq="${i}" title="${meta.detail}${statusWord}"><div class="bingo-cell-icon">${meta.icon}</div>${meta.text}</div>`;
     }).join("")}</div>
     ${bingoCount>0?`<div class="bingo-banner">BINGO${bingoCount>1?` ×${bingoCount}`:""}! 🎉</div>`:""}
   `;
+  // Desktop gets the native title tooltip on hover for free. Touch devices
+  // have no hover, so tapping shows the same explanation as a quick toast
+  // instead of a heavy popup sheet — enough detail without breaking flow.
+  container.querySelectorAll(".bingo-cell").forEach(cell => {
+    cell.addEventListener("click", () => {
+      const i = parseInt(cell.dataset.sq);
+      const sqId = card[i];
+      const meta = BINGO_SQUARE_META[sqId]||{text:sqId,detail:""};
+      const statusWord = sqId==="free" ? "always counts" : hits[i] ? "hit ✓" : "not hit yet";
+      showToast(`${meta.text}: ${meta.detail} (${statusWord})`, 4000);
+    });
+  });
 }
 
 // ---------- Manager DNA ----------
@@ -1944,10 +1957,16 @@ async function renderTransferLab(){
     });
   });
   if(!rows.length){ el.innerHTML=`<div class="sub">No transfers to analyse yet.</div>`; return; }
-  el.innerHTML=rows.map(r=>`
+  // A busy gameweek (wildcard, free hit) can produce a dozen-plus swaps —
+  // showing every single one is noisy and hard to actually read. Just
+  // surface the one clear win and one clear loss, which is the useful part.
+  const best = [...rows].sort((a,b)=>b.delta-a.delta)[0];
+  const worst = [...rows].sort((a,b)=>a.delta-b.delta)[0];
+  const displayRows = best.delta === worst.delta ? [{...best, label:"Only swap"}] : [{...best, label:"Best swap"}, {...worst, label:"Worst swap"}];
+  el.innerHTML=displayRows.map(r=>`
     <div class="lab-row">
       <span class="lgw">GW${r.gw}</span>
-      <div class="lab-move"><span class="lout">${r.outName}</span> → <span class="lin">${r.inName}</span></div>
+      <div class="lab-move"><span style="font-size:9px;color:var(--muted);display:block;">${r.label}</span><span class="lout">${r.outName}</span> → <span class="lin">${r.inName}</span></div>
       <span class="lab-verdict ${r.delta>0?'genius':r.delta<0?'disaster':'neutral'}">${r.delta>0?`+${r.delta} ✓`:r.delta<0?`${r.delta} ✗`:'0 —'}</span>
     </div>`).join("");
 }
