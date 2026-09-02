@@ -679,8 +679,8 @@ async function main() {
   // decisions. Runs every sync, scores update as more data accumulates.
   await computeManagerDNA(managerHistoryMap, gw);
   await computeFplIQ(managerHistoryMap, gw);
-  await computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsByElement, playersMeta, gw);
-  await computeLostPoints(gwResults, gwSquadsRollup, livePointsByElement, gw);
+  await computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsByElement, playersMeta, gw, isFinal);
+  await computeLostPoints(gwResults, gwSquadsRollup, livePointsByElement, gw, isFinal);
 
   // AI-generated gameweek recap ("The Autopsy") — fires on WHICHEVER comes
   // first: FPL's own official confirmation, or our own fixture-based
@@ -830,7 +830,14 @@ async function computeFplIQ(managerHistoryMap, currentGw) {
 // The One That Got Away — every player transferred out lives on in
 // this doc, accumulating points they scored in every subsequent GW.
 // Incrementally updated each sync so we never need to re-read past GWs.
-async function computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsByElement, playersMeta, gw) {
+// The One That Got Away — every player transferred out lives on in
+// this doc, accumulating points they scored in every subsequent GW.
+// Only locks in a GW's points once it's actually final, and tracks the
+// last GW counted per tracked player — without both of those guards,
+// this would keep re-adding the same live/partial score every 15
+// minutes indefinitely, which is exactly what produced wildly inflated
+// numbers before this fix.
+async function computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsByElement, playersMeta, gw, isFinal) {
   const reads = Object.keys(managerHistoryMap).map(id => db.doc(`gotAway/${id}`).get());
   const snaps = await Promise.all(reads);
   const writes = [];
@@ -838,20 +845,25 @@ async function computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsBy
     const entryId = parseInt(Object.keys(managerHistoryMap)[i]);
     const m = Object.values(managerHistoryMap)[i];
     const existing = snap.exists ? snap.data() : { players: [] };
-    // Update existing tracked players with this GW's points
-    let players = (existing.players || []).map(p => ({
-      ...p,
-      pointsSince: (p.pointsSince||0) + (livePointsByElement[p.elementId]||0),
-      lastGw: gw,
-    }));
-    // Add newly transferred-out players from this GW
+    // Only lock in this GW's points once it's actually final — otherwise a
+    // sync mid-match would count a partial score and never revisit it.
+    let players = (existing.players || []).map(p => {
+      if (!isFinal || p.lastCountedGw === gw) return p;
+      return {
+        ...p,
+        pointsSince: (p.pointsSince||0) + (livePointsByElement[p.elementId]||0),
+        lastCountedGw: gw,
+      };
+    });
+    // Add newly transferred-out players from this GW — this part doesn't
+    // depend on the GW being final, since we know who got sold right away.
     const transfers = gwTransfersRollup[entryId];
     if (transfers?.transfersOut) {
       const trackedIds = new Set(players.map(p=>p.elementId));
       transfers.transfersOut.forEach(elementId => {
         if (!trackedIds.has(elementId)) {
           const p = playersMeta[elementId];
-          players.push({ elementId, name: p?.n||"Unknown", soldGw: gw, pointsSince: 0, lastGw: gw });
+          players.push({ elementId, name: p?.n||"Unknown", soldGw: gw, pointsSince: 0, lastCountedGw: null });
         }
       });
     }
@@ -897,6 +909,22 @@ async function checkTodaysFixturesReady(gw) {
   return { ready: allDone, today };
 }
 
+// Catch-up path for the per-matchday AI content (Press Conference, Court,
+// Micro Banter): the day-based check above only fires on a day that
+// genuinely HAS fixtures scheduled — if that window gets missed for any
+// reason (an outage, a missing API key, etc), "today" eventually has zero
+// fixtures for this GW ever again, and it would otherwise be stuck forever
+// with no way to catch up. This checks whether the whole gameweek is done
+// regardless of what day it is, so a missed window still resolves itself
+// on the next sync rather than staying broken until the next gameweek.
+async function checkGwFullyDoneRegardlessOfDay(gw) {
+  const snap = await db.doc(`gameweekFixtures/gw${gw}`).get();
+  if (!snap.exists) return false;
+  const fixtures = snap.data().fixtures || [];
+  if (fixtures.length === 0) return false;
+  return fixtures.every((f) => f.finished);
+}
+
 // A second, independent path to "is this gameweek safely done" for the
 // whole-GW AI recap (the Autopsy) — doesn't wait for FPL's own
 // data_checked flag, which can lag matches actually finishing by anywhere
@@ -927,7 +955,12 @@ async function generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePoint
   const existing = await ref.get();
   const existingData = existing.exists ? existing.data() : null;
   const { ready, today } = await checkTodaysFixturesReady(gw);
-  if (!ready) return; // no fixtures today, or today's matches aren't finished yet
+  // Normal path: today has fixtures and they're all done. Catch-up path:
+  // nothing's ever been generated for this GW yet, and the whole
+  // gameweek is done regardless of what day it is right now — covers the
+  // case where the day-based window got missed entirely.
+  const catchUp = !existingData && (await checkGwFullyDoneRegardlessOfDay(gw));
+  if (!ready && !catchUp) return;
   if (existingData?.lastGeneratedForDate === today) return; // already reflects today's results
   // Find the defendant: manager with highest bench points (biggest waste)
   // — the most visually dramatic FPL crime, every single week
@@ -979,27 +1012,37 @@ Return ONLY a JSON object with keys "prosecution" and "defence". No markdown, no
 // Lost Points Index — each GW, for each manager, finds bench players who
 // outscored the weakest starter and accumulates the "lost" gap all season.
 // Stored incrementally so each sync only needs current-GW data, not history.
-async function computeLostPoints(gwResults, gwSquadsRollup, livePointsByElement, gw) {
+// Lost Points Index — each GW, for each manager, finds bench players who
+// outscored the weakest starter and accumulates the "lost" gap all season.
+// Only counted once a GW is fully final, and tracks which GWs have already
+// been counted per manager — without both of those guards, this would
+// re-increment the running total every 15 minutes all gameweek long, since
+// bench/starter points keep changing live until the whole GW settles.
+async function computeLostPoints(gwResults, gwSquadsRollup, livePointsByElement, gw, isFinal) {
+  if (!isFinal) return;
   const writes = [];
   for (const r of gwResults) {
     const squad = gwSquadsRollup[r.entryId];
     if (!squad) continue;
+    const ref = db.doc(`lostPoints/${r.entryId}`);
+    const snap = await ref.get();
+    const existing = snap.exists ? snap.data() : { totalLost: 0, processedGws: [] };
+    if ((existing.processedGws || []).includes(gw)) continue; // already counted this GW
     const startingPts = squad.starting.map(id => livePointsByElement[id] || 0);
     const benchPts = squad.bench.map(id => livePointsByElement[id] || 0);
     const worstStarter = Math.min(...startingPts);
     const lostThisGw = benchPts.reduce((sum, bPts) => {
       return bPts > worstStarter ? sum + (bPts - worstStarter) : sum;
     }, 0);
-    if (lostThisGw === 0) continue;
-    // Increment the running total — merge:true means we add to whatever's there
     writes.push(
-      db.doc(`lostPoints/${r.entryId}`).set({
+      ref.set({
         entryId: r.entryId,
         teamName: r.teamName,
-        totalLost: admin.firestore.FieldValue.increment(lostThisGw),
+        totalLost: (existing.totalLost||0) + lostThisGw,
+        processedGws: [...(existing.processedGws||[]), gw],
         lastGw: gw,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true })
+      })
     );
   }
   if (writes.length > 0) {
@@ -1018,7 +1061,8 @@ async function generatePressConferenceIfNeeded(gw, gwResults, avgPoints) {
   const existing = await ref.get();
   const existingData = existing.exists ? existing.data() : null;
   const { ready, today } = await checkTodaysFixturesReady(gw);
-  if (!ready) return;
+  const catchUp = !existingData && (await checkGwFullyDoneRegardlessOfDay(gw));
+  if (!ready && !catchUp) return;
   if (existingData?.lastGeneratedForDate === today) return;
   const byPoints = [...gwResults].sort((a, b) => b.gwPoints - a.gwPoints);
   const winner = byPoints[0];
