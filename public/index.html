@@ -354,7 +354,7 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 
 .top5-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);}
 .top5-row:last-child{border-bottom:none;}
-.top5-row .n{font-family:var(--font-m);color:var(--muted);width:16px;}
+.top5-row .n{font-family:var(--font-m);color:var(--muted);width:26px;flex-shrink:0;white-space:nowrap;}
 .top5-row .t{flex:1;font-size:12.5px;font-weight:600;}
 .top5-row .v{font-family:var(--font-m);color:var(--accent2);font-size:12.5px;}
 
@@ -480,7 +480,7 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .kpi-card.clickable:active{transform:scale(.98);}
 .kpi-card .tap-more{font-size:9px;color:var(--muted);margin-top:8px;opacity:.7;}
 .mini-rank-row{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;}
-.mini-rank-row .n{width:16px;color:var(--muted);font-family:var(--font-m);flex-shrink:0;}
+.mini-rank-row .n{width:24px;color:var(--muted);font-family:var(--font-m);flex-shrink:0;white-space:nowrap;}
 .mini-rank-row .t{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .mini-rank-row .v{font-family:var(--font-m);color:var(--accent2);flex-shrink:0;}
 .tv-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:12px;}
@@ -1921,12 +1921,15 @@ async function renderManagerDNA(){
   if(dd.captainConviction) rows.push(`<div class="deepdive-row"><span class="dd-name">Captain conviction</span><span class="dd-val dd-neutral">${dd.captainConviction.hitRate}% top-scorer hit rate</span></div>`);
   if(dd.transferROI) rows.push(`<div class="deepdive-row"><span class="dd-name">Transfer ROI</span><span class="dd-val ${signedClass(dd.transferROI.avgROI)}">${signedStr(dd.transferROI.avgROI,' pts/move')}</span></div>`);
   if(dd.chips && dd.chips.length) rows.push(`<div class="deepdive-row"><span class="dd-name">Chips played</span><span class="dd-val dd-neutral">${dd.chips.length} (avg ${signedStr(Math.round(dd.chips.reduce((s,c)=>s+c.vsAvg,0)/dd.chips.length*10)/10,' vs avg')})</span></div>`);
+  if(dd.luckIndex) rows.push(`<div class="deepdive-row"><span class="dd-name">Luck Index</span><span class="dd-val ${signedClass(dd.luckIndex.total)}">${signedStr(dd.luckIndex.total,' pts vs expected')}</span></div>`);
   const evidence=[];
   if(dd.captainConviction?.bestCall) evidence.push(`Best armband call: <b>${dd.captainConviction.bestCall.captainName}</b> GW${dd.captainConviction.bestCall.gw} (${dd.captainConviction.bestCall.points} pts)`);
   if(dd.transferROI?.bestSwap && dd.transferROI.bestSwap.delta>0) evidence.push(`Best swap: <b>${dd.transferROI.bestSwap.inName}</b> in for ${dd.transferROI.bestSwap.outName}, GW${dd.transferROI.bestSwap.gw} (${signedStr(dd.transferROI.bestSwap.delta)} pts)`);
   if(dd.transferROI?.worstSwap && dd.transferROI.worstSwap.delta<0) evidence.push(`Worst swap: <b>${dd.transferROI.worstSwap.inName}</b> in for ${dd.transferROI.worstSwap.outName}, GW${dd.transferROI.worstSwap.gw} (${signedStr(dd.transferROI.worstSwap.delta)} pts)`);
+  const confStars = d.confidence ? "★".repeat(d.confidence)+"☆".repeat(5-d.confidence) : "";
   el.innerHTML=`
     <div class="dna-archetype">${d.archetype}</div>
+    ${confStars?`<div class="iq-percentile" style="text-align:left;margin-bottom:4px" title="Confidence grows with gameweeks played">${confStars} confidence</div>`:""}
     <div class="dna-traits">${Object.entries(d.traits||{}).map(([k,v])=>`
       <div class="dna-trait-row">
         <span class="tname">${TRAIT_LABELS[k]||k}</span>
@@ -2005,16 +2008,21 @@ async function renderFplIQ(){
   if(ev.worstCaptain && ev.worstCaptain.gap>0) evidence.push(`Worst armband call: <b>${ev.worstCaptain.captainName}</b> GW${ev.worstCaptain.gw} (${ev.worstCaptain.points} pts, left ${ev.worstCaptain.gap} on the bench)`);
   if(ev.bestTransfer && ev.bestTransfer.delta>0) evidence.push(`Best transfer: <b>${ev.bestTransfer.inName}</b> in for ${ev.bestTransfer.outName}, GW${ev.bestTransfer.gw} (${signedStr(ev.bestTransfer.delta)} pts)`);
   if(ev.worstTransfer && ev.worstTransfer.delta<0) evidence.push(`Worst transfer: <b>${ev.worstTransfer.inName}</b> in for ${ev.worstTransfer.outName}, GW${ev.worstTransfer.gw} (${signedStr(ev.worstTransfer.delta)} pts)`);
+  const WEIGHT_KEY={captainIQ:"captain",transferIQ:"transfer",benchIQ:"bench",consistencyIQ:"consistency",chipIQ:"chip"};
+  const weights=d.weights||{};
+  const confStars=d.confidence ? "★".repeat(d.confidence)+"☆".repeat(5-d.confidence) : "";
   el.innerHTML=`
     <div class="fpliq-score">${d.iq}</div>
     <div class="fpliq-label">${d.label}</div>
-    ${typeof d.percentile==="number"?`<div class="iq-percentile">Top ${100-d.percentile}% of the league</div>`:""}
-    <div class="fpliq-bars">${Object.entries(breakdown).map(([k,v])=>`
+    ${typeof d.percentile==="number"?`<div class="iq-percentile">Top ${100-d.percentile}% of the league${confStars?` · ${confStars}`:""}</div>`:""}
+    <div class="fpliq-bars">${Object.entries(breakdown).map(([k,v])=>{
+      const wKey=WEIGHT_KEY[k]; const wPct=wKey&&weights[wKey]?Math.round(weights[wKey]*100):null;
+      return `
       <div class="fpliq-bar-row">
-        <span class="fname">${LABELS[k]||k}</span>
+        <span class="fname">${LABELS[k]||k}${wPct!==null?` <span style="opacity:.55">(${wPct}%)</span>`:""}</span>
         <div class="fpliq-bar-bg"><div class="fpliq-bar-fill" style="width:${v}%"></div></div>
         <span class="fscore">${v}</span>
-      </div>`).join("")}
+      </div>`;}).join("")}
     </div>
     ${evidence.length?`<div class="evidence-line">${evidence.join("<br>")}</div>`:""}
     ${lowest&&CALLOUTS[lowest[0]]?`<div class="iq-callout"><b>What's holding you back:</b> ${CALLOUTS[lowest[0]]}</div>`:""}`;
