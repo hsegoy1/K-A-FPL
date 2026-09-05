@@ -7,7 +7,32 @@ on:
     # updating once a day. Cheap to run this often (each run is well under a
     # minute), and GitHub Actions minutes aren't a real constraint at this scale.
     - cron: "*/15 * * * *"
+    # Guaranteed daily run at 6:00 AM Nepal time (UTC+5:45 → 00:15 UTC).
+    # This is a deliberate belt-and-braces anchor, not a fix on its own —
+    # GitHub Actions explicitly does NOT guarantee scheduled workflows fire
+    # at the exact time, and frequent schedules like the one above are the
+    # first to get delayed or silently skipped when GitHub's shared runners
+    # are under load. A single named daily run is far less likely to be
+    # dropped, so even on a day where the 15-minute cron gets throttled all
+    # afternoon, this one still lands and picks up whatever the FPL API has
+    # confirmed by then (previous day's final scores, bonus points, Dream
+    # Team, etc). The REAL fix for Press Conference / FPL Court showing up
+    # empty on Monday/Tuesday was a logic bug in sync.js (it was gated on
+    # "did today have fixtures", not "what's the latest fully-finished
+    # matchday") — this cron entry is a reliability backstop on top of that,
+    # not a replacement for it.
+    - cron: "15 0 * * *"
   workflow_dispatch: {} # lets you trigger it manually from the Actions tab
+
+# ⚠️ GitHub auto-disables scheduled workflows after 60 days with no commits
+# to the repository — a run of the workflow itself does NOT count and does
+# NOT reset that clock, only an actual push/commit does. If this repo goes
+# quiet for 2 months (a normal thing to happen between seasons, or if this
+# batch push is the last commit made for a while), the cron silently stops
+# firing entirely with no error anywhere obvious — check the Actions tab's
+# "This scheduled workflow is disabled" banner if syncs ever seem to have
+# just stopped. A `workflow_dispatch` run (Actions tab → this workflow → Run
+# workflow) re-enables it.
 
 jobs:
   sync:
