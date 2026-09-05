@@ -302,6 +302,8 @@ async function main() {
   const gwTransfersRollup = {}; // who moved who in/out FOR this gw, league-wide — powers the Transfer Activity insight
   const nextGwTransfersRollup = {}; // transfers already banked for the UPCOMING gw, made during the current pre-deadline window
   const managerHistoryMap = {}; // entryId -> fullHistory — shared by DNA, FPL IQ, and other features needing season-long data
+  const gwSquadFullByEntry = {}; // entryId -> {starting(with pts), bench(with pts), captain, chip, transfersIn, transfersOut} for THIS gw — feeds Manager DNA / FPL IQ deep-dive without re-reading history
+  const ownershipCount = {}; // playerId -> how many managers in the league currently own them — declared here (not inside the Ghost Teams block below) so Manager DNA's real Bandwagon/Differential traits can read it too
 
   for (const m of managers) {
     const entryId = m.entry;
@@ -437,6 +439,11 @@ async function main() {
         starting: starting.map((p) => p.element),
         bench: bench.map((p) => p.element),
       };
+      // Full detail (points + transfers included, not just element ids) —
+      // Manager DNA / FPL IQ's deep-dive metrics need the actual scores to
+      // compute captain conviction, bench waste and transfer ROI without a
+      // second round of Firestore reads.
+      gwSquadFullByEntry[entryId] = { starting, bench, captain: effectiveCaptainId, chip, transfersIn, transfersOut };
       if (transfersThisGw.length > 0) {
         gwTransfersRollup[entryId] = {
           teamName: m.entry_name,
@@ -474,7 +481,6 @@ async function main() {
     //   Algorithm — most-owned XI in the league, captains the most-owned player
     //   Robot     — same XI, but captains whoever was most-CAPTAINED instead
     //   Madman    — the exact opposite: least-owned XI, captains the least-owned player
-    const ownershipCount = {};
     const captainCount = {};
     Object.values(gwSquadsRollup).forEach((entry) => {
       entry.starting.forEach((id) => { ownershipCount[id] = (ownershipCount[id] || 0) + 1; });
@@ -675,12 +681,29 @@ async function main() {
     console.log(`GW Bingo computed for ${bingoWrites.length} managers`);
   }
 
-  // Manager DNA — classify each manager's playing style from their season-long
-  // decisions. Runs every sync, scores update as more data accumulates.
-  await computeManagerDNA(managerHistoryMap, gw);
-  await computeFplIQ(managerHistoryMap, gw);
-  await computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsByElement, playersMeta, gw, isFinal);
+  // Deep-decision accumulators — each one is a small, self-contained
+  // running total guarded by isFinal + processedGws (same accumulation-
+  // safety pattern as everywhere else in this file). These run BEFORE
+  // Manager DNA / FPL IQ so those two can just read the accumulated totals
+  // back out, instead of re-deriving them (and re-reading season-long
+  // squad history) on every single sync.
   await computeLostPoints(gwResults, gwSquadsRollup, livePointsByElement, gw, isFinal);
+  await computeActualVsPerfect(gwResults, gwSquadsRollup, livePointsByElement, gw, isFinal, players);
+  await computeTransferROI(gwSquadFullByEntry, livePointsByElement, gw, isFinal, players);
+  await computeChipPerformance(gwSquadFullByEntry, gwResults, avgPoints, gw, isFinal);
+
+  // Manager DNA / FPL IQ — classify playing style and score decision quality
+  // from the real signals accumulated above (captain calls, transfer ROI,
+  // bench waste, chip timing) plus real league-wide ownership, not proxies.
+  const deepStats = await loadDeepStats(Object.keys(managerHistoryMap));
+  await computeManagerDNA(managerHistoryMap, gw, gwSquadFullByEntry, ownershipCount, managers.length, deepStats);
+  await computeFplIQ(managerHistoryMap, gw, deepStats);
+  await computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsByElement, playersMeta, gw, isFinal);
+  await computeDeathPlayer(gwSquadsRollup, managers, livePointsByElement, gw);
+  await computeAchievements(gwResults, gwSquadsRollup, livePointsByElement, managerHistoryMap, gw, isFinal);
+  await computeRecordBook(gwResults, gw, isFinal);
+  await computeManagerEvolutionSnapshot(managerHistoryMap, gw);
+  await computeTransferHallOfShame(gwTransfersRollup, livePointsByElement, gw, isFinal);
 
   // AI-generated gameweek recap ("The Autopsy") — fires on WHICHEVER comes
   // first: FPL's own official confirmation, or our own fixture-based
@@ -698,6 +721,7 @@ async function main() {
   // games actually finish, not just once at the very end of the gameweek.
   await generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints, playersMeta);
   await generatePressConferenceIfNeeded(gw, gwResults, avgPoints);
+  await generateMicroBanterIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, playersMeta);
 
   console.log(`Synced GW${gw}. Winner: ${gwWinner?.managerName} (${gwWinner?.gwPoints} pts)`);
 }
@@ -742,85 +766,257 @@ Facts:
   console.log(`Autopsy generated for GW${gw} (${text.length} chars)`);
 }
 
+// Actual vs Perfect's own accumulator, Lost Points' own accumulator, and
+// the two new accumulators below (Transfer ROI, Chip Performance) are the
+// four "raw decision signal" collections. Manager DNA and FPL IQ are both
+// just different lenses on the SAME four signals — this reads all four for
+// every manager in one batched round of gets, so neither of those two
+// functions has to duplicate the reads.
+async function loadDeepStats(entryIds) {
+  async function readAll(collection) {
+    const snaps = await Promise.all(entryIds.map((id) => db.doc(`${collection}/${id}`).get()));
+    const m = {};
+    snaps.forEach((s, i) => { if (s.exists) m[entryIds[i]] = s.data(); });
+    return m;
+  }
+  const [lostPointsMap, actualVsPerfectMap, transferROIMap, chipMap] = await Promise.all([
+    readAll("lostPoints"),
+    readAll("actualVsPerfect"),
+    readAll("transferROI"),
+    readAll("chipPerformance"),
+  ]);
+  return { lostPointsMap, actualVsPerfectMap, transferROIMap, chipMap };
+}
+
+// Transfer ROI — for every transfer, did the player bought outscore the
+// player sold in that same gameweek? This is the exact same "delta" used by
+// Transfer Hall of Shame, but accumulated PER MANAGER (not just the
+// league-wide worst 10), plus that manager's own best/worst individual swap
+// kept as evidence. isFinal + processedGws guarded — same
+// accumulation-safety pattern as Lost Points / Actual vs Perfect (see
+// handoff doc section 7a — this is exactly the bug class that pattern
+// exists to prevent).
+async function computeTransferROI(gwSquadFullByEntry, livePointsByElement, gw, isFinal, players) {
+  if (!isFinal) return;
+  const writes = [];
+  for (const [entryId, squad] of Object.entries(gwSquadFullByEntry)) {
+    if (!squad.transfersIn || squad.transfersIn.length === 0) continue;
+    const ref = db.doc(`transferROI/${entryId}`);
+    const snap = await ref.get();
+    const existing = snap.exists ? snap.data() : { totalROI: 0, totalTransfers: 0, processedGws: [], bestSwap: null, worstSwap: null };
+    if ((existing.processedGws || []).includes(gw)) continue;
+    let gwROI = 0;
+    let bestSwap = existing.bestSwap, worstSwap = existing.worstSwap;
+    squad.transfersIn.forEach((inT, i) => {
+      const outT = squad.transfersOut[i];
+      if (!outT) return;
+      const inPts = livePointsByElement[inT.element] || 0;
+      const outPts = livePointsByElement[outT.element] || 0;
+      const delta = inPts - outPts;
+      gwROI += delta;
+      const evidence = { gw, inName: players.get(inT.element)?.web_name || "?", outName: players.get(outT.element)?.web_name || "?", inPts, outPts, delta };
+      if (!bestSwap || delta > bestSwap.delta) bestSwap = evidence;
+      if (!worstSwap || delta < worstSwap.delta) worstSwap = evidence;
+    });
+    writes.push(ref.set({
+      entryId: parseInt(entryId),
+      teamName: squad.teamName || null,
+      totalROI: (existing.totalROI||0) + gwROI,
+      totalTransfers: (existing.totalTransfers||0) + squad.transfersIn.length,
+      processedGws: [...(existing.processedGws||[]), gw],
+      bestSwap, worstSwap,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }));
+  }
+  if (writes.length > 0) {
+    await Promise.all(writes);
+    console.log(`Transfer ROI updated for ${writes.length} managers (GW${gw})`);
+  }
+}
+
+// Chip Performance — how did each chip do relative to the league average in
+// the exact week it was played? A Triple Captain in a week where everyone
+// scores big is unremarkable; one in a quiet week where you still hit 100
+// is elite. Own processedGws guard (chips are rare — a handful a season —
+// so this is a small append-only array, never re-summed).
+async function computeChipPerformance(gwSquadFullByEntry, gwResults, avgPoints, gw, isFinal) {
+  if (!isFinal) return;
+  const sortedScores = [...gwResults].sort((a,b)=>b.gwPoints-a.gwPoints);
+  const writes = [];
+  for (const [entryId, squad] of Object.entries(gwSquadFullByEntry)) {
+    if (!squad.chip) continue;
+    const r = gwResults.find((x) => String(x.entryId) === String(entryId));
+    if (!r) continue;
+    const ref = db.doc(`chipPerformance/${entryId}`);
+    const snap = await ref.get();
+    const existing = snap.exists ? snap.data() : { chips: [], processedGws: [] };
+    if ((existing.processedGws || []).includes(gw)) continue;
+    const rankThisGw = sortedScores.findIndex((x) => x.entryId === r.entryId) + 1;
+    const percentile = Math.round((1 - (rankThisGw-1)/Math.max(sortedScores.length-1,1)) * 100);
+    const entry = { chip: squad.chip, gw, points: r.gwPoints, vsAvg: Math.round((r.gwPoints - avgPoints)*10)/10, percentile };
+    writes.push(ref.set({
+      entryId: parseInt(entryId),
+      teamName: r.teamName,
+      chips: [...(existing.chips||[]), entry],
+      processedGws: [...(existing.processedGws||[]), gw],
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }));
+  }
+  if (writes.length > 0) {
+    await Promise.all(writes);
+    console.log(`Chip performance recorded for ${writes.length} managers (GW${gw})`);
+  }
+}
+
 // Manager DNA — classifies each manager's season-long playing style from
 // their actual decisions. Scores 5 traits (0-100 each) and picks the
-// dominant archetype. Needs at least 3 gameweeks of data to be meaningful.
-async function computeManagerDNA(managerHistoryMap, currentGw) {
+// dominant archetype, exactly as before — but Template and Differential are
+// now computed from REAL current-squad ownership (ownershipCount, built
+// league-wide from this GW's actual squads) instead of a transfer-frequency
+// proxy that couldn't tell a template-hoarder from a genuine rotator. Also
+// layers on a "deep dive" built from the accumulators above: boom/bust
+// range, captain conviction, transfer ROI, chip timing. Needs at least 3
+// gameweeks of data to be meaningful.
+async function computeManagerDNA(managerHistoryMap, currentGw, gwSquadFullByEntry, ownershipCount, totalManagers, deepStats) {
   if (currentGw < 3) return;
-  const writes = [];
+  const ARCHETYPES = { gambler:"🎲 Gambler", template:"📋 Set & Forget", consistent:"🪨 Steady Eddie", clutch:"⚡ Clutch Player", differential:"🦄 Contrarian" };
+  const raw = [];
   for (const [entryId, m] of Object.entries(managerHistoryMap)) {
     const history = m.fullHistory.filter(h => h.gw <= currentGw);
     if (history.length < 2) continue;
     const gwCount = history.length;
     const totalHits = history.reduce((s,h) => s+(h.transferCost||0), 0);
     const gamblerScore = Math.min(100, Math.round(totalHits / gwCount * 12.5));
-    const totalTransfers = history.reduce((s,h) => s+(h.transfers||0), 0);
-    const templateScore = Math.max(0, 100 - Math.round((totalTransfers/gwCount)*25));
     const scores = history.map(h=>h.points||0);
     const mean = scores.reduce((s,v)=>s+v,0)/scores.length;
     const variance = scores.reduce((s,v)=>s+Math.pow(v-mean,2),0)/scores.length;
     const consistencyScore = Math.max(0, 100 - Math.round(Math.sqrt(variance)*2.5));
     const rankImprovements = history.filter((h,i)=>i>0&&h.rank<history[i-1].rank).length;
     const clutchScore = Math.round((rankImprovements/Math.max(gwCount-1,1))*100);
-    const peakScore = Math.max(...scores);
-    const differentialScore = Math.min(100, Math.round((peakScore/100)*50 + (totalTransfers/gwCount)*10));
+
+    // Template & Differential — real ownership, not a proxy. Bandwagon =
+    // average % of the league that also owns each of your 15 players right
+    // now. Differential = % of your squad owned by 15% or fewer of the league.
+    const squad = gwSquadFullByEntry[entryId];
+    let templateScore = 0, differentialScore = 0;
+    if (squad && totalManagers > 0) {
+      const myIds = [...squad.starting.map(p=>p.element), ...squad.bench.map(p=>p.element)];
+      const ownershipPct = myIds.map((id) => ((ownershipCount[id]||0) / totalManagers) * 100);
+      templateScore = Math.round(ownershipPct.reduce((s,v)=>s+v,0) / myIds.length);
+      const diffThreshold = Math.max(1, Math.round(totalManagers * 0.15));
+      differentialScore = Math.round((myIds.filter((id) => (ownershipCount[id]||0) <= diffThreshold).length / myIds.length) * 100);
+    }
+
     const traits = { gambler: gamblerScore, template: templateScore, consistent: consistencyScore, clutch: clutchScore, differential: differentialScore };
     const topTrait = Object.entries(traits).sort((a,b)=>b[1]-a[1])[0][0];
-    const ARCHETYPES = { gambler:"🎲 Gambler", template:"📋 Set & Forget", consistent:"🪨 Steady Eddie", clutch:"⚡ Clutch Player", differential:"🦄 Contrarian" };
-    writes.push(db.doc(`managerDNA/${entryId}`).set({
-      entryId: parseInt(entryId),
-      teamName: m.entry_name,
-      archetype: ARCHETYPES[topTrait],
-      traits,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    }));
+
+    const avp = deepStats.actualVsPerfectMap[entryId];
+    const troi = deepStats.transferROIMap[entryId];
+    const chips = deepStats.chipMap[entryId];
+    const bestGw = Math.max(...scores), worstGw = Math.min(...scores);
+    const avpGwCount = avp ? (avp.processedGws||[]).length : 0;
+
+    raw.push({
+      entryId, teamName: m.entry_name, traits, archetype: ARCHETYPES[topTrait],
+      boomBust: { ratio: worstGw > 0 ? Math.round((bestGw/worstGw)*10)/10 : bestGw, bestGw, worstGw },
+      captainConviction: avp && avpGwCount > 0 ? { hitRate: Math.round((avp.perfectCount/avpGwCount)*100), bestCall: avp.bestCall||null, worstCall: avp.worstCall||null } : null,
+      transferROI: troi && troi.totalTransfers > 0 ? { avgROI: Math.round((troi.totalROI/troi.totalTransfers)*10)/10, totalTransfers: troi.totalTransfers, bestSwap: troi.bestSwap||null, worstSwap: troi.worstSwap||null } : null,
+      chips: chips ? chips.chips : [],
+    });
   }
+
+  // Rank transfer ROI across the league so the frontend can show "top 20%"
+  // rather than just a bare average.
+  const roiVals = raw.filter(x=>x.transferROI).map(x=>x.transferROI.avgROI).sort((a,b)=>a-b);
+  const percentileOf = (val, sorted) => sorted.length<2 ? 50 : Math.round((sorted.filter(v=>v<val).length/(sorted.length-1))*100);
+
+  const writes = raw.map((x) => db.doc(`managerDNA/${x.entryId}`).set({
+    entryId: parseInt(x.entryId),
+    teamName: x.teamName,
+    archetype: x.archetype,
+    traits: x.traits,
+    deepDive: {
+      boomBust: x.boomBust,
+      captainConviction: x.captainConviction,
+      transferROI: x.transferROI ? { ...x.transferROI, percentile: percentileOf(x.transferROI.avgROI, roiVals) } : null,
+      chips: x.chips,
+    },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }));
   if (writes.length > 0) {
     await Promise.all(writes);
     console.log(`Manager DNA computed for ${writes.length} managers`);
   }
 }
 
-// FPL IQ — a composite decision-quality score based on season-long behaviour.
-// Four pillars: hit control (avoiding costly transfers), consistency,
-// bench management (not wasting points on unused subs), and relative
-// performance (beating the field). Shows from GW1 — early scores will be
-// noisy with little data, but that's fine, it settles as the season builds.
-async function computeFplIQ(managerHistoryMap, currentGw) {
-  const allScores = Object.values(managerHistoryMap)
-    .map(m => m.fullHistory.filter(h => h.gw <= currentGw).map(h => h.points||0))
-    .flat();
-  const leagueAvg = allScores.length > 0 ? allScores.reduce((s,v)=>s+v,0)/allScores.length : 40;
-  const writes = [];
+// FPL IQ — a composite decision-quality score built from real decision
+// signals instead of raw outcome totals:
+//   Captain IQ      — from Actual vs Perfect's accumulated gap (was the
+//                      captain actually your best starting-XI option?)
+//   Transfer IQ     — from Transfer ROI's accumulated delta (did the swap
+//                      pay off, not just "did you avoid a hit")
+//   Bench IQ        — from Lost Points' accumulated waste — the SAME
+//                      "bench player beat your weakest starter" definition
+//                      used on the Lost Points Index card, not a second,
+//                      competing formula that just penalises any bench
+//                      points at all
+//   Consistency IQ  — unchanged: inverse of score variance
+//   Chip IQ         — NEW: average percentile of your chip weeks vs the
+//                      league that same week
+// Pillars that need isFinal-gated data show as a neutral 50 until at least
+// one gameweek has been fully confirmed — shows from GW1, gets sharper as
+// the season builds real signal.
+async function computeFplIQ(managerHistoryMap, currentGw, deepStats) {
+  const raw = [];
   for (const [entryId, m] of Object.entries(managerHistoryMap)) {
     const history = m.fullHistory.filter(h => h.gw <= currentGw);
     if (history.length < 1) continue;
     const gwCount = history.length;
     const scores = history.map(h=>h.points||0);
     const mean = scores.reduce((s,v)=>s+v,0)/gwCount;
-    // Hit Control: every 4 pts spent on hits = -1 IQ point. Cap at 100.
-    const totalHits = history.reduce((s,h)=>s+(h.transferCost||0),0);
-    const hitIQ = Math.max(0, 100 - Math.round(totalHits * 2.5));
-    // Consistency: inverse of normalised standard deviation
     const variance = scores.reduce((s,v)=>s+Math.pow(v-mean,2),0)/gwCount;
     const consistencyIQ = Math.max(0, 100 - Math.round(Math.sqrt(variance)*2));
-    // Bench Management: lower bench waste is better
-    const totalBench = history.reduce((s,h)=>s+(h.benchPoints||0),0);
-    const benchIQ = Math.max(0, 100 - Math.round((totalBench/gwCount)*2));
-    // Relative Performance: % of weeks above league average
-    const aboveAvg = scores.filter(s=>s>leagueAvg).length;
-    const relativeIQ = Math.round((aboveAvg/gwCount)*100);
-    const iq = Math.round(hitIQ*0.30 + consistencyIQ*0.25 + benchIQ*0.25 + relativeIQ*0.20);
+
+    const avp = deepStats.actualVsPerfectMap[entryId];
+    const avpGws = avp ? (avp.processedGws||[]).length : 0;
+    const captainIQ = avp && avpGws > 0 ? Math.max(0, 100 - Math.round((avp.totalGap/avpGws)*6)) : 50;
+
+    const lp = deepStats.lostPointsMap[entryId];
+    const lpGws = lp ? (lp.processedGws||[]).length : 0;
+    const benchIQ = lp && lpGws > 0 ? Math.max(0, 100 - Math.round((lp.totalLost/lpGws)*2.5)) : 50;
+
+    const troi = deepStats.transferROIMap[entryId];
+    const transferIQ = troi && troi.totalTransfers > 0 ? Math.max(0, Math.min(100, 50 + Math.round((troi.totalROI/troi.totalTransfers)*4))) : 50;
+
+    const chips = deepStats.chipMap[entryId];
+    const chipIQ = chips && chips.chips.length > 0 ? Math.round(chips.chips.reduce((s,c)=>s+c.percentile,0)/chips.chips.length) : 50;
+
+    const iq = Math.round(captainIQ*0.25 + transferIQ*0.25 + benchIQ*0.20 + consistencyIQ*0.15 + chipIQ*0.15);
     const label = iq>=85?"🧠 Elite":iq>=70?"🎓 Sharp":iq>=55?"📚 Learning":iq>=40?"🤔 Questionable":"💀 What Are You Doing";
-    writes.push(db.doc(`fplIQ/${entryId}`).set({
-      entryId: parseInt(entryId),
-      teamName: m.entry_name,
-      iq,
-      label,
-      breakdown: { hitIQ, consistencyIQ, benchIQ, relativeIQ },
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    }));
+
+    raw.push({
+      entryId, teamName: m.entry_name, iq, label,
+      breakdown: { captainIQ, transferIQ, benchIQ, consistencyIQ, chipIQ },
+      evidence: {
+        bestCaptain: avp?.bestCall || null,
+        worstCaptain: avp?.worstCall || null,
+        bestTransfer: troi?.bestSwap || null,
+        worstTransfer: troi?.worstSwap || null,
+      },
+    });
   }
+  const iqVals = raw.map(x=>x.iq).sort((a,b)=>a-b);
+  const percentileOf = (val) => iqVals.length<2 ? 50 : Math.round((iqVals.filter(v=>v<val).length/(iqVals.length-1))*100);
+  const writes = raw.map((x) => db.doc(`fplIQ/${x.entryId}`).set({
+    entryId: parseInt(x.entryId),
+    teamName: x.teamName,
+    iq: x.iq,
+    label: x.label,
+    percentile: percentileOf(x.iq),
+    breakdown: x.breakdown,
+    evidence: x.evidence,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }));
   if (writes.length > 0) {
     await Promise.all(writes);
     console.log(`FPL IQ computed for ${writes.length} managers`);
@@ -832,11 +1028,10 @@ async function computeFplIQ(managerHistoryMap, currentGw) {
 // Incrementally updated each sync so we never need to re-read past GWs.
 // The One That Got Away — every player transferred out lives on in
 // this doc, accumulating points they scored in every subsequent GW.
-// Only locks in a GW's points once it's actually final, and tracks the
-// last GW counted per tracked player — without both of those guards,
-// this would keep re-adding the same live/partial score every 15
-// minutes indefinitely, which is exactly what produced wildly inflated
-// numbers before this fix.
+// Incrementally updated each sync so we never need to re-read past GWs.
+// Tracks the last GW counted for each tracked player specifically — without
+// that, this would keep re-adding the same GW's points on every 15-minute
+// sync tick indefinitely, since there was no guard here at all before.
 async function computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsByElement, playersMeta, gw, isFinal) {
   const reads = Object.keys(managerHistoryMap).map(id => db.doc(`gotAway/${id}`).get());
   const snaps = await Promise.all(reads);
@@ -949,16 +1144,53 @@ async function checkGwSafelyDoneForAI(gw) {
   return Date.now() >= lastKickoff + MATCH_DURATION_MS + BONUS_BUFFER_MS;
 }
 
+// Micro Banter — 3-4 short, punchy one-liners about what just happened,
+// unlocks GW12. Same per-matchday update pattern as Press Conference/Court.
+async function generateMicroBanterIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, playersMeta) {
+  if (gw < 12) return;
+  const ref = db.doc(`microBanter/gw${gw}`);
+  const existing = await ref.get();
+  const existingData = existing.exists ? existing.data() : null;
+  const { ready, today } = await checkTodaysFixturesReady(gw);
+  const catchUp = !existingData && (await checkGwFullyDoneRegardlessOfDay(gw));
+  if (!ready && !catchUp) return;
+  if (existingData?.lastGeneratedForDate === today) return;
+  const byPoints = [...gwResults].sort((a,b)=>b.gwPoints-a.gwPoints);
+  const winner = byPoints[0];
+  const biggestBench = [...gwResults].sort((a,b)=>b.benchPoints-a.benchPoints)[0];
+  const captainBlank = gwResults.find(r => {
+    const squad = gwSquadsRollup[r.entryId];
+    return squad?.captain && (livePointsByElement[squad.captain]||0) < 3;
+  });
+  const facts = [
+    winner ? `${winner.teamName} is leading this gameweek with ${winner.gwPoints} points` : null,
+    biggestBench && biggestBench.benchPoints > 8 ? `${biggestBench.teamName} left ${biggestBench.benchPoints} points on the bench` : null,
+    captainBlank ? `${captainBlank.teamName}'s captain blanked` : null,
+  ].filter(Boolean);
+  if (facts.length === 0) return;
+  const prompt = `You are writing short, witty one-liner banter for "K&A Paid FPL", an office Fantasy Premier League mini-league. Based on these facts from Gameweek ${gw} so far, write ${facts.length} punchy, funny one-liners (one per fact, under 20 words each). Plain text, one liner per line, no numbering, no markdown.
+
+Facts:
+${facts.map(f=>`- ${f}`).join('\n')}`;
+  const text = await callOpenRouter(prompt, 250);
+  if (!text) return;
+  const lines = text.split('\n').map(l=>l.trim()).filter(Boolean).slice(0,4);
+  if (lines.length === 0) return;
+  await ref.set({
+    gw,
+    lastGeneratedForDate: today,
+    lines,
+    generatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  console.log(`Micro Banter generated for GW${gw}: ${lines.length} lines`);
+}
+
 async function generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints, playersMeta) {
   if (gw < 10) return;
   const ref = db.doc(`fplCourt/gw${gw}`);
   const existing = await ref.get();
   const existingData = existing.exists ? existing.data() : null;
   const { ready, today } = await checkTodaysFixturesReady(gw);
-  // Normal path: today has fixtures and they're all done. Catch-up path:
-  // nothing's ever been generated for this GW yet, and the whole
-  // gameweek is done regardless of what day it is right now — covers the
-  // case where the day-based window got missed entirely.
   const catchUp = !existingData && (await checkGwFullyDoneRegardlessOfDay(gw));
   if (!ready && !catchUp) return;
   if (existingData?.lastGeneratedForDate === today) return; // already reflects today's results
@@ -1094,6 +1326,230 @@ Return ONLY a JSON object: { "winner": { "question": "...", "answer": "..." }, "
     generatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
   console.log(`Press Conference generated for GW${gw}`);
+}
+
+// The Death Player — the single player league-wide who, if they haul,
+// would cause the most chaos in the standings. Defined as: the
+// lowest-owned player among those owned by anyone currently in the top 10
+// of the table — a differential among the leaders swings the race hardest.
+async function computeDeathPlayer(gwSquadsRollup, standingsManagers, livePointsByElement, gw) {
+  if (!gw) return;
+  const top10Ids = new Set(
+    [...standingsManagers].sort((a,b)=>(b.total||0)-(a.total||0)).slice(0,10).map(m=>m.entry)
+  );
+  const ownership = {}; // elementId -> count across whole league
+  const top10Owners = {}; // elementId -> [teamName] owned by a top-10 manager
+  Object.entries(gwSquadsRollup).forEach(([entryId, squad]) => {
+    const allIds = [...squad.starting, ...squad.bench];
+    allIds.forEach(id => {
+      ownership[id] = (ownership[id]||0) + 1;
+      if (top10Ids.has(parseInt(entryId))) {
+        if (!top10Owners[id]) top10Owners[id] = [];
+        top10Owners[id].push(squad.teamName);
+      }
+    });
+  });
+  const candidates = Object.entries(top10Owners)
+    .map(([id, owners]) => ({ id: parseInt(id), owners, totalOwnership: ownership[id]||0 }))
+    .sort((a,b) => a.totalOwnership - b.totalOwnership);
+  const deathPlayer = candidates[0];
+  if (!deathPlayer) return;
+  await db.doc(`deathPlayer/gw${gw}`).set({
+    gw,
+    elementId: deathPlayer.id,
+    ownedByTop10: deathPlayer.owners,
+    totalOwnership: deathPlayer.totalOwnership,
+    currentPoints: livePointsByElement[deathPlayer.id] || 0,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
+
+// Actual vs Perfect — cumulative gap between what each manager actually
+// scored and what they'd have scored with the perfect captain pick every
+// week (best-scoring player in their own starting XI, captained instead).
+// Same double-counting risk as Lost Points above — only counted once final,
+// tracked per-GW so a repeat sync run can never re-add the same week twice.
+async function computeActualVsPerfect(gwResults, gwSquadsRollup, livePointsByElement, gw, isFinal, players) {
+  if (!isFinal) return;
+  const writes = [];
+  for (const r of gwResults) {
+    const squad = gwSquadsRollup[r.entryId];
+    if (!squad || !squad.captain) continue;
+    const ref = db.doc(`actualVsPerfect/${r.entryId}`);
+    const snap = await ref.get();
+    const existing = snap.exists ? snap.data() : { totalGap: 0, processedGws: [], perfectCount: 0, bestCall: null, worstCall: null };
+    if ((existing.processedGws || []).includes(gw)) continue;
+    const captainPts = livePointsByElement[squad.captain] || 0;
+    const bestPossible = Math.max(...squad.starting.map(id => livePointsByElement[id] || 0));
+    const gap = bestPossible - captainPts;
+    // Captain conviction evidence — kept for Manager DNA / FPL IQ's
+    // "best call" / "worst call" callouts, so the score comes with a real
+    // example attached instead of just a number.
+    const captainName = players?.get(squad.captain)?.web_name || "?";
+    const evidence = { gw, captainName, points: captainPts, gap };
+    let bestCall = existing.bestCall, worstCall = existing.worstCall;
+    if (!bestCall || gap < bestCall.gap || (gap === bestCall.gap && captainPts > bestCall.points)) bestCall = evidence;
+    if (!worstCall || gap > worstCall.gap) worstCall = evidence;
+    writes.push(
+      ref.set({
+        entryId: r.entryId,
+        teamName: r.teamName,
+        totalGap: (existing.totalGap||0) + gap,
+        processedGws: [...(existing.processedGws||[]), gw],
+        perfectCount: (existing.perfectCount||0) + (gap === 0 && captainPts > 0 ? 1 : 0),
+        bestCall,
+        worstCall,
+        lastGw: gw,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      })
+    );
+  }
+  if (writes.length > 0) await Promise.all(writes);
+}
+
+// Achievements — permanent badges, checked every sync, never removed once
+// earned. Each manager's doc just grows over the season.
+const ACHIEVEMENT_DEFS = {
+  first_win:      { label: "🏆 First Blood",       desc: "Won your first gameweek" },
+  century:        { label: "💯 Century Club",       desc: "Scored 100+ in a single gameweek" },
+  bench_disaster: { label: "🪑 Bench Disaster",     desc: "Left 20+ points on the bench in one GW" },
+  zero_hero:      { label: "💀 Zero Hero",          desc: "Scored under 20 points in a gameweek" },
+  perfect_captain:{ label: "🎯 Perfect Captain",    desc: "Your captain was the top scorer in your own squad" },
+  risk_taker:     { label: "🎲 Risk Taker",         desc: "Took a hit of 12+ points on transfers" },
+  giant_slayer:   { label: "🤖 Giant Slayer",       desc: "Beat the Algorithm ghost team in a gameweek" },
+  comeback:       { label: "📈 The Comeback",       desc: "Climbed 10+ places in the overall rank in one GW" },
+};
+async function computeAchievements(gwResults, gwSquadsRollup, livePointsByElement, managerHistoryMap, gw, isFinal) {
+  if (!isFinal) return; // check against settled numbers only — a mid-week spike shouldn't permanently earn (or narrowly miss) a badge
+  const ghostSnap = await db.doc(`ghostTeams/gw${gw}`).get();
+  const algorithmPts = ghostSnap.exists ? (ghostSnap.data().algorithm?.points || 0) : null;
+  const writes = [];
+  for (const r of gwResults) {
+    const squad = gwSquadsRollup[r.entryId];
+    const m = managerHistoryMap[r.entryId];
+    if (!squad || !m) continue;
+    const earned = [];
+    const history = m.fullHistory.filter(h => h.gw <= gw).sort((a,b)=>a.gw-b.gw);
+    const isFirstWin = history.length > 0 && history[history.length-1].rank === 1 && !history.slice(0,-1).some(h=>h.rank===1);
+    // (approximate "first win" as first time reaching rank 1 in the mini-league history — good enough signal)
+    if (r.gwPoints >= 100) earned.push("century");
+    if (r.benchPoints >= 20) earned.push("bench_disaster");
+    if (r.gwPoints > 0 && r.gwPoints < 20) earned.push("zero_hero");
+    if (r.transferCost >= 12) earned.push("risk_taker");
+    if (squad.captain) {
+      const capPts = livePointsByElement[squad.captain] || 0;
+      const bestInSquad = Math.max(...squad.starting.map(id => livePointsByElement[id] || 0));
+      if (capPts === bestInSquad && capPts > 0) earned.push("perfect_captain");
+    }
+    if (algorithmPts !== null && r.gwPoints > algorithmPts) earned.push("giant_slayer");
+    if (history.length >= 2) {
+      const rankGain = (history[history.length-2].rank||99) - (history[history.length-1].rank||99);
+      if (rankGain >= 10) earned.push("comeback");
+    }
+    if (earned.length === 0) continue;
+    writes.push((async () => {
+      const ref = db.doc(`achievements/${r.entryId}`);
+      const snap = await ref.get();
+      const existing = snap.exists ? (snap.data().earned || []) : [];
+      const existingIds = new Set(existing.map(e => e.id));
+      const newOnes = earned.filter(id => !existingIds.has(id)).map(id => ({ id, gw, earnedAt: new Date().toISOString() }));
+      if (newOnes.length === 0) return;
+      await ref.set({
+        entryId: r.entryId,
+        teamName: r.teamName,
+        earned: [...existing, ...newOnes],
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    })());
+  }
+  if (writes.length > 0) {
+    await Promise.all(writes);
+    console.log(`Achievements checked for GW${gw}`);
+  }
+}
+
+// League Record Book — permanent season records, only updated when broken.
+async function computeRecordBook(gwResults, gw, isFinal) {
+  if (!isFinal) return; // don't let a still-moving mid-week number set (and then confusingly re-set) a permanent record
+  if (gwResults.length === 0) return;
+  const ref = db.doc("recordBook/season");
+  const snap = await ref.get();
+  const records = snap.exists ? snap.data() : {};
+  const highest = [...gwResults].sort((a,b)=>b.gwPoints-a.gwPoints)[0];
+  const lowest = [...gwResults].sort((a,b)=>a.gwPoints-b.gwPoints)[0];
+  const biggestBenchGw = [...gwResults].sort((a,b)=>b.benchPoints-a.benchPoints)[0];
+  const biggestHitGw = [...gwResults].sort((a,b)=>b.transferCost-a.transferCost)[0];
+  const updates = {};
+  if (!records.highestGw || highest.gwPoints > records.highestGw.points) {
+    updates.highestGw = { entryId: highest.entryId, teamName: highest.teamName, points: highest.gwPoints, gw };
+  }
+  if (!records.lowestGw || lowest.gwPoints < records.lowestGw.points) {
+    updates.lowestGw = { entryId: lowest.entryId, teamName: lowest.teamName, points: lowest.gwPoints, gw };
+  }
+  if (!records.biggestBenchWaste || biggestBenchGw.benchPoints > records.biggestBenchWaste.points) {
+    updates.biggestBenchWaste = { entryId: biggestBenchGw.entryId, teamName: biggestBenchGw.teamName, points: biggestBenchGw.benchPoints, gw };
+  }
+  if (!records.biggestHit || biggestHitGw.transferCost > records.biggestHit.points) {
+    updates.biggestHit = { entryId: biggestHitGw.entryId, teamName: biggestHitGw.teamName, points: biggestHitGw.transferCost, gw };
+  }
+  if (Object.keys(updates).length === 0) return;
+  await ref.set({ ...records, ...updates, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  console.log(`Record Book updated for GW${gw}: ${Object.keys(updates).join(', ')}`);
+}
+
+// Manager Evolution — snapshots each manager's DNA archetype every 4
+// gameweeks, building a timeline of how their playing style has shifted.
+async function computeManagerEvolutionSnapshot(managerHistoryMap, gw) {
+  if (gw < 3 || gw % 4 !== 0) return; // only snapshot every 4th GW, and DNA needs 3+ GWs to mean anything
+  const writes = [];
+  for (const entryId of Object.keys(managerHistoryMap)) {
+    const dnaSnap = await db.doc(`managerDNA/${entryId}`).get();
+    if (!dnaSnap.exists) continue;
+    const dna = dnaSnap.data();
+    writes.push(
+      db.doc(`managerEvolution/${entryId}`).set({
+        entryId: parseInt(entryId),
+        teamName: dna.teamName,
+        snapshots: admin.firestore.FieldValue.arrayUnion({ gw, archetype: dna.archetype, traits: dna.traits }),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true })
+    );
+  }
+  if (writes.length > 0) {
+    await Promise.all(writes);
+    console.log(`Manager Evolution snapshotted at GW${gw}`);
+  }
+}
+
+// Transfer Hall of Shame — running, season-long list of the worst transfers
+// league-wide by points lost (incoming player scored fewer points than the
+// one dropped, same gameweek). Only evaluated once a GW is fully final —
+// scores are still moving otherwise, and would record the same transfer
+// with a different (wrong) delta on every sync tick. Tracks which GWs have
+// already been processed so it never double-counts once final either.
+async function computeTransferHallOfShame(gwTransfersRollup, livePointsByElement, gw, isFinal) {
+  if (!isFinal) return;
+  const ref = db.doc("transferHallOfShame/season");
+  const snap = await ref.get();
+  const existingData = snap.exists ? snap.data() : { worst: [], processedGws: [] };
+  if ((existingData.processedGws || []).includes(gw)) return; // already recorded this GW's transfers
+  const candidates = [];
+  Object.values(gwTransfersRollup).forEach(entry => {
+    (entry.transfersIn||[]).forEach((inId, i) => {
+      const outId = entry.transfersOut?.[i];
+      if (outId === undefined) return;
+      const delta = (livePointsByElement[inId]||0) - (livePointsByElement[outId]||0);
+      if (delta < -3) { // only genuinely bad swaps are worth immortalising
+        candidates.push({ gw, teamName: entry.teamName, inId, outId, delta });
+      }
+    });
+  });
+  const combined = [...(existingData.worst||[]), ...candidates].sort((a,b)=>a.delta-b.delta).slice(0,10);
+  await ref.set({
+    worst: combined,
+    processedGws: [...(existingData.processedGws||[]), gw],
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
 }
 
 main().catch((err) => {
