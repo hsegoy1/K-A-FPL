@@ -6,7 +6,7 @@
 <title>K&A Paid FPL</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Color+Emoji&display=swap" rel="stylesheet" />
 <style>
 :root{
   --bg:#0D0715; --panel:#170F26; --line:#301F45; --text:#F5EEFF; --muted:#9C8CC2;
@@ -165,6 +165,19 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .dna-bar-bg{flex:1;height:6px;background:var(--line);border-radius:3px;overflow:hidden;}
 .dna-bar-fill{height:100%;background:var(--grad);border-radius:3px;}
 .dna-trait-row .tscore{width:28px;text-align:right;font-family:var(--font-m);color:var(--accent2);font-size:10px;flex-shrink:0;}
+.deepdive{margin-top:12px;padding-top:10px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:7px;}
+.deepdive-label{font-family:var(--font-m);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;}
+.deepdive-row{display:flex;justify-content:space-between;align-items:baseline;font-size:11.5px;gap:8px;}
+.deepdive-row .dd-name{color:var(--muted);}
+.deepdive-row .dd-val{font-family:var(--font-m);font-weight:700;flex-shrink:0;text-align:right;}
+.dd-pos{color:var(--green);}
+.dd-neg{color:var(--red);}
+.dd-neutral{color:var(--text);}
+.evidence-line{font-size:10.5px;color:var(--muted);line-height:1.5;margin-top:2px;}
+.evidence-line b{color:var(--text);font-weight:600;}
+.iq-callout{background:rgba(255,46,146,.08);border:1px solid rgba(255,46,146,.25);border-radius:10px;padding:8px 10px;font-size:11px;color:var(--text);margin-top:10px;line-height:1.45;}
+.iq-callout b{color:var(--accent1);}
+.iq-percentile{text-align:center;font-size:10.5px;color:var(--gold);font-family:var(--font-m);margin-bottom:6px;}
 .derby-vs{display:flex;align-items:center;gap:12px;margin-top:10px;}
 .derby-side{flex:1;text-align:center;}
 .derby-side .dname{font-weight:700;font-size:13px;}
@@ -180,6 +193,39 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .fpliq-bar-fill{height:100%;background:var(--grad);border-radius:3px;}
 .fpliq-bar-row .fscore{width:24px;text-align:right;font-family:var(--font-m);font-size:10px;color:var(--muted);flex-shrink:0;}
 .gotaway-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12px;}
+.death-player-card{text-align:center;padding:10px 0;}
+.death-player-name{font-size:20px;font-weight:800;font-family:var(--font-d);margin-bottom:2px;}
+.death-player-meta{font-size:11px;color:var(--muted);margin-bottom:8px;}
+.death-player-owners{font-size:11px;color:var(--red);}
+.battleground-cols{display:flex;gap:10px;}
+.battleground-col{flex:1;}
+.battleground-col .bctitle{font-family:var(--font-m);font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px;}
+.battleground-row{display:flex;justify-content:space-between;font-size:11px;padding:4px 0;}
+.battleground-row .bname{font-weight:600;}
+.battleground-row.buy .bcount{color:var(--green);}
+.battleground-row.sell .bcount{color:var(--red);}
+.powerrank-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12px;}
+.powerrank-row:last-child{border-bottom:none;}
+.powerrank-row .pr-arrow{width:16px;font-size:10px;flex-shrink:0;}
+.powerrank-row .pr-arrow.up{color:var(--green);}
+.powerrank-row .pr-arrow.down{color:var(--red);}
+.powerrank-row .pr-name{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.powerrank-row .pr-score{font-family:var(--font-m);color:var(--accent2);font-weight:700;flex-shrink:0;}
+.achievement-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:10px;padding:6px 10px;margin:0 6px 6px 0;font-size:11px;}
+.banter-line{font-size:12.5px;line-height:1.6;padding:6px 0;border-bottom:1px solid var(--line);}
+.banter-line:last-child{border-bottom:none;}
+.record-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:12px;}
+.record-row:last-child{border-bottom:none;}
+.record-row .rlabel{color:var(--muted);}
+.record-row .rval{font-family:var(--font-m);color:var(--accent2);font-weight:700;text-align:right;}
+.evolution-timeline{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.evolution-step{background:rgba(255,255,255,.04);border-radius:8px;padding:5px 9px;font-size:10.5px;}
+.evolution-arrow{color:var(--muted);font-size:11px;}
+.shame-hof-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:11.5px;}
+.shame-hof-row:last-child{border-bottom:none;}
+.shame-hof-row .sh-gw{font-family:var(--font-m);font-size:9px;color:var(--muted);width:26px;flex-shrink:0;}
+.shame-hof-row .sh-move{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.shame-hof-row .sh-delta{font-family:var(--font-m);color:var(--red);font-weight:700;flex-shrink:0;}
 .gotaway-row:last-child{border-bottom:none;}
 .gotaway-row .gname{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .gotaway-row .gsold{color:var(--muted);font-size:10px;flex-shrink:0;}
@@ -655,6 +701,89 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .recap-btn:active{transform:scale(.98);}
 .season-report-line{display:flex;justify-content:space-between;font-size:12.5px;padding:6px 0;border-bottom:1px solid var(--line);}
 .season-report-line:last-child{border-bottom:none;}
+
+/* ═══════════════════════════════════════════════════════════════
+   VISUAL POLISH PATCH — animation, emoji clarity, and depth only.
+   No color/theme variables touched — --bg, --accent1, --accent2,
+   --gold, --green, --red, --grad all stay exactly as defined above.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Crisp, consistent emoji rendering — the site uses emoji constantly
+   (section titles, awards, achievements, ghost teams) and OS-default
+   emoji fonts render flat/inconsistent across devices. Noto Color
+   Emoji (loaded in the font link above) fixes this. */
+.section-title, h3, .tab .ic, .award .emoji, .if-pill{
+  font-family: inherit, 'Noto Color Emoji';
+}
+
+/* Subtle 3D depth on headers/titles — a soft stacked shadow that makes
+   text (and any emoji in it) sit slightly above the glass panel rather
+   than lying flat on it. Applied only to headers/titles, never to plain
+   body text or numbers. */
+.section-title, .kpi-card h3{
+  text-shadow:
+    0 1px 1px rgba(0,0,0,.35),
+    0 2px 4px rgba(0,0,0,.30),
+    0 6px 12px rgba(0,0,0,.22);
+}
+
+/* Panel hover-lift — a gentle rise + deepened shadow on hover, using the
+   same border/background colors already defined, just adding motion. */
+.kpi-card{
+  transition: transform .35s cubic-bezier(.2,.8,.2,1), box-shadow .35s ease, border-color .35s ease;
+}
+.kpi-card:hover{
+  transform: translateY(-3px);
+  border-color: rgba(255,255,255,.14);
+  box-shadow: 0 16px 28px -8px rgba(0,0,0,.35), inset 0 1px 0 0 rgba(255,255,255,.06);
+}
+
+/* Button polish — hover lift and a satisfying press, layered on top of
+   whatever background/border each button already has rather than
+   overriding it, so .tab.active / .if-pill.active / etc keep their own
+   distinct look untouched. */
+button{
+  transition: transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s ease, filter .22s ease;
+}
+button:hover{ transform: translateY(-1px); filter: brightness(1.08); }
+button:active{ transform: translateY(1px) scale(.97); }
+
+/* Upgraded "NEW" badge — expanding ring pulse instead of a plain opacity
+   fade, using our own --accent2 for the ring color (already cyan, no new
+   hue introduced). */
+.new-badge{ animation: newPulseRing 1.8s ease-out infinite; }
+@keyframes newPulseRing{
+  0%   { box-shadow: 0 0 0 0 rgba(0,229,255,.55); }
+  70%  { box-shadow: 0 0 0 8px rgba(0,229,255,0); }
+  100% { box-shadow: 0 0 0 0 rgba(0,229,255,0); }
+}
+
+/* Gentle ambient float on award tiles — makes the Awards tab feel a
+   little alive without being distracting. */
+.award{ animation: subtleFloat 6s ease-in-out infinite; }
+@keyframes subtleFloat{ 0%,100%{ transform: translateY(0); } 50%{ transform: translateY(-4px); } }
+
+/* Metallic depth on standings points specifically — a light-to-muted
+   gradient (desaturated, not a new color) that gives the number a bit
+   of dimension. Hero stats (.hstat b) already use our brand --grad and
+   are left untouched on purpose. */
+.rpts b{
+  background: linear-gradient(180deg, #ffffff, var(--muted));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Shimmer skeleton — a reusable utility class for "Loading…" states,
+   available for any card to opt into (not retrofitted everywhere in
+   this pass, just added as a ready-to-use building block). */
+.skeleton{
+  background: linear-gradient(90deg, rgba(255,255,255,.02) 25%, rgba(255,255,255,.08) 50%, rgba(255,255,255,.02) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+@keyframes shimmer{ 0%{ background-position: -200% 0; } 100%{ background-position: 200% 0; } }
+/* ═══════════════ END VISUAL POLISH PATCH ═══════════════ */
 </style>
 </head>
 <body>
@@ -925,6 +1054,43 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
         <div id="transferlab-display"></div>
       </div>
     </div>
+
+    <div class="insight-block" data-cat="gw">
+      <div class="section-title"><span class="bar"></span>The Death Player <span id="deathplayer-badge"></span></div>
+      <div class="kpi-card">
+        <h3>The player everyone's secretly terrified of</h3>
+        <div class="sub">Lowest-owned player among the league's top 10 — if they haul, the race swings hard</div>
+        <div id="deathplayer-display"></div>
+      </div>
+    </div>
+
+    <div class="insight-block" data-cat="season">
+      <div class="section-title"><span class="bar"></span>Actual vs Perfect You <span id="avp-badge"></span></div>
+      <div class="kpi-card clickable" data-detail="avp">
+        <h3>The gap between what happened and what could have</h3>
+        <div class="sub">Points missed from imperfect captain calls, all season</div>
+        <div id="avp-display"></div>
+        <div class="tap-more">tap for full ranking →</div>
+      </div>
+    </div>
+
+    <div class="insight-block" data-cat="gw">
+      <div class="section-title"><span class="bar"></span>Ownership Battleground <span id="battleground-badge"></span></div>
+      <div class="kpi-card">
+        <h3>Who's buying, who's selling right now</h3>
+        <div class="sub">This gameweek's most contested transfer moves</div>
+        <div id="battleground-display"></div>
+      </div>
+    </div>
+
+    <div class="insight-block" data-cat="season">
+      <div class="section-title"><span class="bar"></span>Power Rankings <span id="powerrank-badge"></span></div>
+      <div class="kpi-card">
+        <h3>Momentum-weighted leaderboard</h3>
+        <div class="sub">Blends total points with recent form — can look very different from the table</div>
+        <div id="powerrank-display"></div>
+      </div>
+    </div>
   </div>
 
   <!-- Drama tab — fun, social, banter -->
@@ -1001,6 +1167,54 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
         <h3>Players you sold who came back to haunt you</h3>
         <div class="sub">Points they've scored since you transferred them out</div>
         <div id="gotaway-display"></div>
+      </div>
+    </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Achievements <span id="achievements-badge"></span></div>
+      <div class="kpi-card">
+        <h3>Your earned badges this season</h3>
+        <div id="achievements-display"></div>
+      </div>
+    </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Micro Banter <span id="microbanter-badge"></span></div>
+      <div class="kpi-card">
+        <h3>Quick takes on what just happened</h3>
+        <div id="microbanter-display"></div>
+      </div>
+    </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>League Record Book <span id="recordbook-badge"></span></div>
+      <div class="kpi-card">
+        <h3>The permanent season records</h3>
+        <div id="recordbook-display"></div>
+      </div>
+    </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Manager Evolution <span id="evolution-badge"></span></div>
+      <div class="kpi-card">
+        <h3>How your playing style has shifted</h3>
+        <div id="evolution-display"></div>
+      </div>
+    </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>Transfer Hall of Shame <span id="halloffame-badge"></span></div>
+      <div class="kpi-card">
+        <h3>The worst transfers, permanently immortalised</h3>
+        <div id="halloffame-display"></div>
+      </div>
+    </div>
+
+    <div class="insight-block" id="allout-block" style="display:none;">
+      <div class="section-title"><span class="bar"></span>⚡ All-Out Attack</div>
+      <div class="kpi-card" style="border-color:rgba(255,77,109,.4);background:rgba(255,77,109,.06);">
+        <h3>Special event — top attacking returns right now</h3>
+        <div id="allout-display"></div>
       </div>
     </div>
   </div>
@@ -1677,9 +1891,6 @@ async function renderBingoCard(){
     }).join("")}</div>
     ${bingoCount>0?`<div class="bingo-banner">BINGO${bingoCount>1?` ×${bingoCount}`:""}! 🎉</div>`:""}
   `;
-  // Desktop gets the native title tooltip on hover for free. Touch devices
-  // have no hover, so tapping shows the same explanation as a quick toast
-  // instead of a heavy popup sheet — enough detail without breaking flow.
   container.querySelectorAll(".bingo-cell").forEach(cell => {
     cell.addEventListener("click", () => {
       const i = parseInt(cell.dataset.sq);
@@ -1692,6 +1903,8 @@ async function renderBingoCard(){
 }
 
 // ---------- Manager DNA ----------
+function signedClass(v){ return v>0?"dd-pos":v<0?"dd-neg":"dd-neutral"; }
+function signedStr(v,suffix=""){ return `${v>0?'+':''}${v}${suffix}`; }
 async function renderManagerDNA(){
   const el=document.getElementById("dna-display");
   document.getElementById("dna-new-badge").innerHTML=newBadgeHtml('managerDNA');
@@ -1702,6 +1915,16 @@ async function renderManagerDNA(){
   if(!snap.exists()){ el.innerHTML=`<div class="sub">DNA computed after GW3.</div>`; return; }
   const d=snap.data();
   const TRAIT_LABELS={gambler:"Gambler",template:"Template",consistent:"Consistent",clutch:"Clutch",differential:"Differential"};
+  const dd=d.deepDive||{};
+  const rows=[];
+  if(dd.boomBust) rows.push(`<div class="deepdive-row"><span class="dd-name">Boom/Bust ratio</span><span class="dd-val dd-neutral">${dd.boomBust.ratio}× (best ${dd.boomBust.bestGw} / worst ${dd.boomBust.worstGw})</span></div>`);
+  if(dd.captainConviction) rows.push(`<div class="deepdive-row"><span class="dd-name">Captain conviction</span><span class="dd-val dd-neutral">${dd.captainConviction.hitRate}% top-scorer hit rate</span></div>`);
+  if(dd.transferROI) rows.push(`<div class="deepdive-row"><span class="dd-name">Transfer ROI</span><span class="dd-val ${signedClass(dd.transferROI.avgROI)}">${signedStr(dd.transferROI.avgROI,' pts/move')}</span></div>`);
+  if(dd.chips && dd.chips.length) rows.push(`<div class="deepdive-row"><span class="dd-name">Chips played</span><span class="dd-val dd-neutral">${dd.chips.length} (avg ${signedStr(Math.round(dd.chips.reduce((s,c)=>s+c.vsAvg,0)/dd.chips.length*10)/10,' vs avg')})</span></div>`);
+  const evidence=[];
+  if(dd.captainConviction?.bestCall) evidence.push(`Best armband call: <b>${dd.captainConviction.bestCall.captainName}</b> GW${dd.captainConviction.bestCall.gw} (${dd.captainConviction.bestCall.points} pts)`);
+  if(dd.transferROI?.bestSwap && dd.transferROI.bestSwap.delta>0) evidence.push(`Best swap: <b>${dd.transferROI.bestSwap.inName}</b> in for ${dd.transferROI.bestSwap.outName}, GW${dd.transferROI.bestSwap.gw} (${signedStr(dd.transferROI.bestSwap.delta)} pts)`);
+  if(dd.transferROI?.worstSwap && dd.transferROI.worstSwap.delta<0) evidence.push(`Worst swap: <b>${dd.transferROI.worstSwap.inName}</b> in for ${dd.transferROI.worstSwap.outName}, GW${dd.transferROI.worstSwap.gw} (${signedStr(dd.transferROI.worstSwap.delta)} pts)`);
   el.innerHTML=`
     <div class="dna-archetype">${d.archetype}</div>
     <div class="dna-traits">${Object.entries(d.traits||{}).map(([k,v])=>`
@@ -1710,7 +1933,9 @@ async function renderManagerDNA(){
         <div class="dna-bar-bg"><div class="dna-bar-fill" style="width:${v}%"></div></div>
         <span class="tscore">${v}</span>
       </div>`).join("")}
-    </div>`;
+    </div>
+    ${rows.length?`<div class="deepdive"><div class="deepdive-label">Deep dive</div>${rows.join("")}</div>`:""}
+    ${evidence.length?`<div class="evidence-line">${evidence.join("<br>")}</div>`:""}`;
 }
 
 // ---------- H2H Derby — find your closest rival ----------
@@ -1764,17 +1989,35 @@ async function renderFplIQ(){
   const snap=await getDoc(doc(db,`fplIQ/${me.id}`));
   if(!snap.exists()){ el.innerHTML=`<div class="sub">FPL IQ computing — check back after the next sync.</div>`; return; }
   const d=snap.data();
-  const LABELS={hitIQ:"Hit Control",consistencyIQ:"Consistency",benchIQ:"Bench Mgmt",relativeIQ:"vs Field"};
+  const LABELS={captainIQ:"Captain IQ",transferIQ:"Transfer IQ",benchIQ:"Bench Mgmt",consistencyIQ:"Consistency",chipIQ:"Chip Timing"};
+  const breakdown=d.breakdown||{};
+  const lowest=Object.entries(breakdown).sort((a,b)=>a[1]-b[1])[0];
+  const CALLOUTS={
+    captainIQ:"Your armband is costing you — too often your captain wasn't even your best starter that week.",
+    transferIQ:"Your transfers aren't paying off — the players you're bringing in are underperforming the ones you sold.",
+    benchIQ:"Your bench is where you're bleeding points — a sub outscores your weakest starter more often than it should.",
+    consistencyIQ:"Your scores swing wildly week to week — feast or famine, no middle ground.",
+    chipIQ:"Your chip timing hasn't lined up with the big weeks yet.",
+  };
+  const ev=d.evidence||{};
+  const evidence=[];
+  if(ev.bestCaptain) evidence.push(`Best armband call: <b>${ev.bestCaptain.captainName}</b> GW${ev.bestCaptain.gw} (${ev.bestCaptain.points} pts)`);
+  if(ev.worstCaptain && ev.worstCaptain.gap>0) evidence.push(`Worst armband call: <b>${ev.worstCaptain.captainName}</b> GW${ev.worstCaptain.gw} (${ev.worstCaptain.points} pts, left ${ev.worstCaptain.gap} on the bench)`);
+  if(ev.bestTransfer && ev.bestTransfer.delta>0) evidence.push(`Best transfer: <b>${ev.bestTransfer.inName}</b> in for ${ev.bestTransfer.outName}, GW${ev.bestTransfer.gw} (${signedStr(ev.bestTransfer.delta)} pts)`);
+  if(ev.worstTransfer && ev.worstTransfer.delta<0) evidence.push(`Worst transfer: <b>${ev.worstTransfer.inName}</b> in for ${ev.worstTransfer.outName}, GW${ev.worstTransfer.gw} (${signedStr(ev.worstTransfer.delta)} pts)`);
   el.innerHTML=`
     <div class="fpliq-score">${d.iq}</div>
     <div class="fpliq-label">${d.label}</div>
-    <div class="fpliq-bars">${Object.entries(d.breakdown||{}).map(([k,v])=>`
+    ${typeof d.percentile==="number"?`<div class="iq-percentile">Top ${100-d.percentile}% of the league</div>`:""}
+    <div class="fpliq-bars">${Object.entries(breakdown).map(([k,v])=>`
       <div class="fpliq-bar-row">
         <span class="fname">${LABELS[k]||k}</span>
         <div class="fpliq-bar-bg"><div class="fpliq-bar-fill" style="width:${v}%"></div></div>
         <span class="fscore">${v}</span>
       </div>`).join("")}
-    </div>`;
+    </div>
+    ${evidence.length?`<div class="evidence-line">${evidence.join("<br>")}</div>`:""}
+    ${lowest&&CALLOUTS[lowest[0]]?`<div class="iq-callout"><b>What's holding you back:</b> ${CALLOUTS[lowest[0]]}</div>`:""}`;
 }
 
 // ---------- The One That Got Away ----------
@@ -1957,9 +2200,6 @@ async function renderTransferLab(){
     });
   });
   if(!rows.length){ el.innerHTML=`<div class="sub">No transfers to analyse yet.</div>`; return; }
-  // A busy gameweek (wildcard, free hit) can produce a dozen-plus swaps —
-  // showing every single one is noisy and hard to actually read. Just
-  // surface the one clear win and one clear loss, which is the useful part.
   const best = [...rows].sort((a,b)=>b.delta-a.delta)[0];
   const worst = [...rows].sort((a,b)=>a.delta-b.delta)[0];
   const displayRows = best.delta === worst.delta ? [{...best, label:"Only swap"}] : [{...best, label:"Best swap"}, {...worst, label:"Worst swap"}];
@@ -2051,6 +2291,183 @@ function initInsightFilter(){
       });
     });
   });
+}
+
+// ---------- The Death Player ----------
+async function renderDeathPlayer(){
+  const el=document.getElementById("deathplayer-display");
+  document.getElementById("deathplayer-badge").innerHTML=newBadgeHtml('deathPlayer');
+  if(!featureUnlocked('deathPlayer')||!GW_COUNT){ el.innerHTML=""; return; }
+  const snap=await getDoc(doc(db,`deathPlayer/gw${GW_COUNT}`));
+  if(!snap.exists()){ el.innerHTML=`<div class="sub">Computing — check back after the next sync.</div>`; return; }
+  const d=snap.data();
+  const info=playerInfo(d.elementId);
+  el.innerHTML=`
+    <div class="death-player-card">
+      <div class="death-player-name">☠️ ${info.n}</div>
+      <div class="death-player-meta">${info.team} · ${info.pos} · owned by only ${d.totalOwnership} in the league · currently ${d.currentPoints} pts</div>
+      <div class="death-player-owners">Owned by leaders: ${d.ownedByTop10.join(', ')}</div>
+    </div>`;
+}
+
+// ---------- Actual vs Perfect You ----------
+async function renderActualVsPerfect(){
+  const el=document.getElementById("avp-display");
+  document.getElementById("avp-badge").innerHTML=newBadgeHtml('actualVsPerfect');
+  if(!featureUnlocked('actualVsPerfect')||!ident.team){ el.innerHTML=""; return; }
+  const me=managers.find(m=>m.teamName===ident.team);
+  if(!me){ el.innerHTML=`<div class="sub">Pick your identity first.</div>`; return; }
+  const snap=await getDoc(doc(db,`actualVsPerfect/${me.id}`));
+  if(!snap.exists()){ el.innerHTML=`<div class="sub">Computing — check back after the next finalized GW.</div>`; return; }
+  const d=snap.data();
+  el.innerHTML=`<div class="sub">You've left <b style="color:var(--red)">${d.totalGap}</b> points on the table from imperfect captain calls this season.</div>`;
+}
+
+// ---------- Ownership Battleground ----------
+async function renderOwnershipBattleground(){
+  const el=document.getElementById("battleground-display");
+  document.getElementById("battleground-badge").innerHTML=newBadgeHtml('playerBattleground');
+  if(!featureUnlocked('playerBattleground')||!GW_COUNT){ el.innerHTML=""; return; }
+  const snap=await getDoc(doc(db,`gameweekTransfers/gw${GW_COUNT}`));
+  if(!snap.exists()){ el.innerHTML=`<div class="sub">No transfers this GW yet.</div>`; return; }
+  const entries=Object.values(snap.data().entries||{});
+  const bought={}, sold={};
+  entries.forEach(e=>{
+    (e.transfersIn||[]).forEach(id=>{bought[id]=(bought[id]||0)+1;});
+    (e.transfersOut||[]).forEach(id=>{sold[id]=(sold[id]||0)+1;});
+  });
+  const topBought=Object.entries(bought).sort((a,b)=>b[1]-a[1]).slice(0,4);
+  const topSold=Object.entries(sold).sort((a,b)=>b[1]-a[1]).slice(0,4);
+  if(!topBought.length&&!topSold.length){ el.innerHTML=`<div class="sub">No transfers this GW yet.</div>`; return; }
+  el.innerHTML=`
+    <div class="battleground-cols">
+      <div class="battleground-col">
+        <div class="bctitle">📈 Most Bought</div>
+        ${topBought.map(([id,c])=>`<div class="battleground-row buy"><span class="bname">${playerInfo(parseInt(id)).n}</span><span class="bcount">+${c}</span></div>`).join("")||'<div class="sub">None</div>'}
+      </div>
+      <div class="battleground-col">
+        <div class="bctitle">📉 Most Sold</div>
+        ${topSold.map(([id,c])=>`<div class="battleground-row sell"><span class="bname">${playerInfo(parseInt(id)).n}</span><span class="bcount">-${c}</span></div>`).join("")||'<div class="sub">None</div>'}
+      </div>
+    </div>`;
+}
+
+// ---------- Power Rankings ----------
+function renderPowerRankings(){
+  const el=document.getElementById("powerrank-display");
+  document.getElementById("powerrank-badge").innerHTML=newBadgeHtml('powerRankings');
+  if(!featureUnlocked('powerRankings')||managers.length===0){ el.innerHTML=""; return; }
+  const maxPts=Math.max(...managers.map(m=>m.totalPoints),1);
+  const scored=managers.map(m=>{
+    const recent=m.history.slice(-3);
+    const recentAvg=recent.length?recent.reduce((s,h)=>s+(h.points||0),0)/recent.length:0;
+    const normalizedTotal=m.totalPoints/maxPts*100;
+    const normalizedForm=Math.min(100,recentAvg/100*100*1.5);
+    const power=normalizedTotal*0.6+normalizedForm*0.4;
+    return {m, power};
+  }).sort((a,b)=>b.power-a.power);
+  const standingsRank={};
+  [...managers].sort((a,b)=>b.totalPoints-a.totalPoints).forEach((m,i)=>{standingsRank[m.id]=i+1;});
+  el.innerHTML=scored.slice(0,8).map((x,i)=>{
+    const stRank=standingsRank[x.m.id];
+    const moved=stRank-(i+1);
+    return `<div class="powerrank-row">
+      <span class="pr-arrow ${moved>0?'up':moved<0?'down':''}">${moved>0?'▲':moved<0?'▼':'–'}</span>
+      <span class="pr-name">${x.m.teamName}</span>
+      <span class="pr-score">${x.power.toFixed(0)}</span>
+    </div>`;
+  }).join("");
+}
+
+// ---------- Achievements ----------
+async function renderAchievements(){
+  const el=document.getElementById("achievements-display");
+  document.getElementById("achievements-badge").innerHTML=newBadgeHtml('achievements');
+  if(!featureUnlocked('achievements')||!ident.team){ el.innerHTML=""; return; }
+  const me=managers.find(m=>m.teamName===ident.team);
+  if(!me){ el.innerHTML=`<div class="sub">Pick your identity first.</div>`; return; }
+  const snap=await getDoc(doc(db,`achievements/${me.id}`));
+  if(!snap.exists()||!(snap.data().earned?.length)){ el.innerHTML=`<div class="sub">No badges earned yet — keep playing.</div>`; return; }
+  const ACHIEVEMENT_LABELS={
+    first_win:"🏆 First Blood", century:"💯 Century Club", bench_disaster:"🪑 Bench Disaster",
+    zero_hero:"💀 Zero Hero", perfect_captain:"🎯 Perfect Captain", risk_taker:"🎲 Risk Taker",
+    giant_slayer:"🤖 Giant Slayer", comeback:"📈 The Comeback",
+  };
+  el.innerHTML=snap.data().earned.map(a=>`<span class="achievement-badge">${ACHIEVEMENT_LABELS[a.id]||a.id} <span style="color:var(--muted)">GW${a.gw}</span></span>`).join("");
+}
+
+// ---------- Micro Banter ----------
+async function renderMicroBanter(){
+  const el=document.getElementById("microbanter-display");
+  document.getElementById("microbanter-badge").innerHTML=newBadgeHtml('microBanter');
+  if(!featureUnlocked('microBanter')||!GW_COUNT){ el.innerHTML=""; return; }
+  const snap=await getDoc(doc(db,`microBanter/gw${GW_COUNT}`));
+  if(!snap.exists()||!(snap.data().lines?.length)){ el.innerHTML=`<div class="sub">Nothing notable to report yet today.</div>`; return; }
+  el.innerHTML=snap.data().lines.map(l=>`<div class="banter-line">${escapeHtml(l)}</div>`).join("");
+}
+
+// ---------- League Record Book ----------
+async function renderRecordBook(){
+  const el=document.getElementById("recordbook-display");
+  document.getElementById("recordbook-badge").innerHTML=newBadgeHtml('recordBook');
+  if(!featureUnlocked('recordBook')){ el.innerHTML=""; return; }
+  const snap=await getDoc(doc(db,"recordBook/season"));
+  if(!snap.exists()){ el.innerHTML=`<div class="sub">Records build up as the season goes.</div>`; return; }
+  const d=snap.data();
+  const rows=[
+    d.highestGw?['🔥 Highest GW Score', `${d.highestGw.teamName} — ${d.highestGw.points} pts (GW${d.highestGw.gw})`]:null,
+    d.lowestGw?['💀 Lowest GW Score', `${d.lowestGw.teamName} — ${d.lowestGw.points} pts (GW${d.lowestGw.gw})`]:null,
+    d.biggestBenchWaste?['🪑 Biggest Bench Waste', `${d.biggestBenchWaste.teamName} — ${d.biggestBenchWaste.points} pts (GW${d.biggestBenchWaste.gw})`]:null,
+    d.biggestHit?['🎲 Biggest Hit Taken', `${d.biggestHit.teamName} — -${d.biggestHit.points} pts (GW${d.biggestHit.gw})`]:null,
+  ].filter(Boolean);
+  el.innerHTML=rows.map(([label,val])=>`<div class="record-row"><span class="rlabel">${label}</span><span class="rval">${val}</span></div>`).join("")||`<div class="sub">No records yet.</div>`;
+}
+
+// ---------- Manager Evolution ----------
+async function renderManagerEvolution(){
+  const el=document.getElementById("evolution-display");
+  document.getElementById("evolution-badge").innerHTML=newBadgeHtml('managerEvolution');
+  if(!featureUnlocked('managerEvolution')||!ident.team){ el.innerHTML=""; return; }
+  const me=managers.find(m=>m.teamName===ident.team);
+  if(!me){ el.innerHTML=`<div class="sub">Pick your identity first.</div>`; return; }
+  const snap=await getDoc(doc(db,`managerEvolution/${me.id}`));
+  if(!snap.exists()||!(snap.data().snapshots?.length)){ el.innerHTML=`<div class="sub">Not enough history yet — snapshots happen every 4 gameweeks.</div>`; return; }
+  const snapshots=[...snap.data().snapshots].sort((a,b)=>a.gw-b.gw);
+  el.innerHTML=`<div class="evolution-timeline">${snapshots.map((s,i)=>`
+    ${i>0?'<span class="evolution-arrow">→</span>':''}
+    <span class="evolution-step">GW${s.gw}: ${s.archetype}</span>
+  `).join("")}</div>`;
+}
+
+// ---------- Transfer Hall of Shame ----------
+async function renderTransferHallOfShame(){
+  const el=document.getElementById("halloffame-display");
+  document.getElementById("halloffame-badge").innerHTML=newBadgeHtml('transferHallOfShame');
+  if(!featureUnlocked('transferHallOfShame')){ el.innerHTML=""; return; }
+  const snap=await getDoc(doc(db,"transferHallOfShame/season"));
+  if(!snap.exists()||!(snap.data().worst?.length)){ el.innerHTML=`<div class="sub">No truly disastrous transfers recorded yet.</div>`; return; }
+  el.innerHTML=snap.data().worst.slice(0,8).map(t=>`
+    <div class="shame-hof-row">
+      <span class="sh-gw">GW${t.gw}</span>
+      <span class="sh-move">${t.teamName}: ${playerInfo(t.outId).n} → ${playerInfo(t.inId).n}</span>
+      <span class="sh-delta">${t.delta}</span>
+    </div>`).join("");
+}
+
+// ---------- All-Out Attack (admin special event) ----------
+async function renderAllOutAttack(){
+  const block=document.getElementById("allout-block");
+  const el=document.getElementById("allout-display");
+  if(!featureUnlocked('allOutAttack')||!GW_COUNT){ block.style.display="none"; return; }
+  block.style.display="";
+  const snap=await getDoc(doc(db,`gwPlayerPoints/gw${GW_COUNT}`));
+  if(!snap.exists()){ el.innerHTML=`<div class="sub">No data yet.</div>`; return; }
+  const pts=snap.data().points||{};
+  const top=Object.entries(pts).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  el.innerHTML=top.map(([id,p])=>{
+    const info=playerInfo(parseInt(id));
+    return `<div class="record-row"><span class="rlabel">${info.n} (${info.team})</span><span class="rval">${p} pts</span></div>`;
+  }).join("");
 }
 
 // ---------- Transfer Shaming (now in Drama tab) ----------
@@ -3386,9 +3803,37 @@ document.addEventListener("click", async (e) => {
   } else if(type === "dna"){
     const dnaSnaps = await Promise.all(managers.map(m=>getDoc(doc(db,`managerDNA/${m.id}`))));
     const rows = dnaSnaps.map(s=>s.exists()?s.data():null).filter(Boolean).sort((a,b)=>a.archetype.localeCompare(b.archetype));
+    // DNA Twin / Nemesis — Euclidean distance across the 5 trait scores
+    // between me and everyone else with DNA computed. Pure client-side
+    // comparison, no extra reads beyond what's already fetched above.
+    let twinNemesisHtml = "";
+    const me = managers.find(m=>m.teamName===ident.team);
+    const myDna = me ? rows.find(r=>r.entryId===me.id) : null;
+    if(myDna && rows.length>1){
+      const TRAIT_KEYS=["gambler","template","consistent","clutch","differential"];
+      const dist=(a,b)=>Math.sqrt(TRAIT_KEYS.reduce((s,k)=>s+Math.pow((a.traits?.[k]||0)-(b.traits?.[k]||0),2),0));
+      const others=rows.filter(r=>r.entryId!==myDna.entryId).map(r=>({r,d:dist(myDna,r)}));
+      const twin=[...others].sort((a,b)=>a.d-b.d)[0];
+      const nemesis=[...others].sort((a,b)=>b.d-a.d)[0];
+      if(twin && nemesis){
+        twinNemesisHtml = `
+          <div class="kpi-card" style="margin-bottom:10px">
+            <div class="deepdive-row"><span class="dd-name">🧬 Your DNA Twin</span><span class="dd-val dd-neutral">${twin.r.teamName} (${twin.r.archetype})</span></div>
+            <div class="deepdive-row"><span class="dd-name">👿 Your DNA Nemesis</span><span class="dd-val dd-neutral">${nemesis.r.teamName} (${nemesis.r.archetype})</span></div>
+          </div>`;
+      }
+    }
     openSheet(`
       <div class="squad-header"><div style="font-size:22px">🧬</div><div><h2>Manager DNA</h2><p>Playing style classification based on season decisions</p></div></div>
+      ${twinNemesisHtml}
       ${rows.map(r=>`<div class="mini-rank-row"><span class="t">${r.teamName}</span><span class="v">${r.archetype}</span></div>`).join("") || '<div class="sub">DNA computed after GW3.</div>'}
+    `);
+  } else if(type === "fpliq"){
+    const snaps = await Promise.all(managers.map(m=>getDoc(doc(db,`fplIQ/${m.id}`))));
+    const ranked = snaps.map((s,i)=>s.exists()?{m:managers[i],d:s.data()}:null).filter(Boolean).sort((a,b)=>b.d.iq-a.d.iq);
+    openSheet(`
+      <div class="squad-header"><div style="font-size:22px">🧠</div><div><h2>FPL IQ Ranking</h2><p>Decision quality — captain calls, transfer ROI, bench management, consistency, chip timing</p></div></div>
+      ${ranked.map((x,i)=>`<div class="mini-rank-row"><span class="n">${i+1}</span><span class="t">${x.m.teamName}</span><span class="v">${x.d.iq} ${x.d.label}</span></div>`).join("") || '<div class="sub">FPL IQ computing — check back after the next sync.</div>'}
     `);
   } else if(type === "lostpts"){
     const snaps = await Promise.all(managers.map(m=>getDoc(doc(db,`lostPoints/${m.id}`))));
@@ -3397,6 +3842,14 @@ document.addEventListener("click", async (e) => {
     openSheet(`
       <div class="squad-header"><div style="font-size:22px">😭</div><div><h2>Lost Points Index</h2><p>Points lost when a bench player outscored a starter, all season</p></div></div>
       ${ranked.map((x,i)=>`<div class="mini-rank-row"><span class="n">${i+1}</span><span class="t">${x.m.teamName}</span><span class="v">-${x.total} pts</span></div>`).join("") || '<div class="sub">No data yet — unlocks GW8.</div>'}
+    `);
+  } else if(type === "avp"){
+    const snaps = await Promise.all(managers.map(m=>getDoc(doc(db,`actualVsPerfect/${m.id}`))));
+    const ranked = snaps.map((s,i)=>s.exists()?{m:managers[i],total:s.data().totalGap||0}:null)
+      .filter(Boolean).filter(x=>x.total>0).sort((a,b)=>b.total-a.total);
+    openSheet(`
+      <div class="squad-header"><div style="font-size:22px">🎯</div><div><h2>Actual vs Perfect You</h2><p>Points missed from imperfect captain calls, all season</p></div></div>
+      ${ranked.map((x,i)=>`<div class="mini-rank-row"><span class="n">${i+1}</span><span class="t">${x.m.teamName}</span><span class="v">-${x.total} pts</span></div>`).join("") || '<div class="sub">No data yet.</div>'}
     `);
   } else if(type === "momentum"){
     if(GW_COUNT < MIN_GW_FOR_MOMENTUM){ openSheet(`<div class="sub">Momentum unlocks after GW${MIN_GW_FOR_MOMENTUM}.</div>`); return; }
@@ -4256,6 +4709,16 @@ async function boot(){
   safeRender(renderFplIQ, "renderFplIQ");
   safeRender(renderGotAway, "renderGotAway");
   safeRender(renderFplCourt, "renderFplCourt");
+  safeRender(renderDeathPlayer, "renderDeathPlayer");
+  safeRender(renderActualVsPerfect, "renderActualVsPerfect");
+  safeRender(renderOwnershipBattleground, "renderOwnershipBattleground");
+  safeRender(renderPowerRankings, "renderPowerRankings");
+  safeRender(renderAchievements, "renderAchievements");
+  safeRender(renderMicroBanter, "renderMicroBanter");
+  safeRender(renderRecordBook, "renderRecordBook");
+  safeRender(renderManagerEvolution, "renderManagerEvolution");
+  safeRender(renderTransferHallOfShame, "renderTransferHallOfShame");
+  safeRender(renderAllOutAttack, "renderAllOutAttack");
   safeRender(renderDifferentialDanger, "renderDifferentialDanger");
   safeRender(renderPressConference, "renderPressConference");
   safeRender(renderLostPoints, "renderLostPoints");
@@ -4326,6 +4789,16 @@ async function boot(){
       safeRender(renderFplIQ, "renderFplIQ (live refresh)");
       safeRender(renderGotAway, "renderGotAway (live refresh)");
       safeRender(renderFplCourt, "renderFplCourt (live refresh)");
+      safeRender(renderDeathPlayer, "renderDeathPlayer (live refresh)");
+      safeRender(renderActualVsPerfect, "renderActualVsPerfect (live refresh)");
+      safeRender(renderOwnershipBattleground, "renderOwnershipBattleground (live refresh)");
+      safeRender(renderPowerRankings, "renderPowerRankings (live refresh)");
+      safeRender(renderAchievements, "renderAchievements (live refresh)");
+      safeRender(renderMicroBanter, "renderMicroBanter (live refresh)");
+      safeRender(renderRecordBook, "renderRecordBook (live refresh)");
+      safeRender(renderManagerEvolution, "renderManagerEvolution (live refresh)");
+      safeRender(renderTransferHallOfShame, "renderTransferHallOfShame (live refresh)");
+      safeRender(renderAllOutAttack, "renderAllOutAttack (live refresh)");
       safeRender(renderDifferentialDanger, "renderDifferentialDanger (live refresh)");
       safeRender(renderPressConference, "renderPressConference (live refresh)");
       safeRender(renderLostPoints, "renderLostPoints (live refresh)");
