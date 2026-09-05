@@ -161,6 +161,36 @@ async function main() {
       console.log(`Dream Team GW${gw} fetch failed: ${e.message}`);
     }
   }
+  // Backfill — the fetch above only ever asks FPL for whichever gameweek
+  // was CURRENT at sync time. Once a gameweek stops being current, nothing
+  // ever asks again — if that one attempt happened to land before FPL had
+  // finished confirming that week's official Dream Team (late Monday
+  // night, while bonus points are still settling, is a real case), the
+  // page is permanently stuck showing "not synced yet" for that gameweek,
+  // even though the data has been sitting there finished for weeks. This
+  // gives every past finished gameweek without a stored Dream Team one
+  // more attempt, every sync, until it succeeds — self-healing, and cheap
+  // (one Firestore read per finished gw; a real FPL fetch only happens for
+  // the ones still actually missing, which is normally zero).
+  for (const e of events) {
+    if (!e.finished || e.id === gw) continue;
+    const existing = await db.doc(`dreamTeam/gw${e.id}`).get();
+    if (existing.exists) continue;
+    try {
+      const dt = await getJson(`${FPL_BASE}/dream-team/${e.id}/`);
+      if (dt?.top_players?.length) {
+        await db.doc(`dreamTeam/gw${e.id}`).set({
+          gw: e.id,
+          players: dt.top_players,
+          formation: dt.formation || null,
+          syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        console.log(`Dream Team GW${e.id} backfilled (${dt.top_players.length} players)`);
+      }
+    } catch (err) {
+      console.log(`Dream Team GW${e.id} backfill fetch failed: ${err.message}`);
+    }
+  }
 
   if (!targetEvent) {
     console.log("No gameweek has kicked off yet this season — will still sync standings/managers, but skip gameweek-specific stats for now.");
@@ -691,12 +721,14 @@ async function main() {
   await computeActualVsPerfect(gwResults, gwSquadsRollup, livePointsByElement, gw, isFinal, players);
   await computeTransferROI(gwSquadFullByEntry, livePointsByElement, gw, isFinal, players);
   await computeChipPerformance(gwSquadFullByEntry, gwResults, avgPoints, gw, isFinal);
+  await computeOwnershipHistory(gwSquadFullByEntry, ownershipCount, managers.length, gw);
+  await computeLuckIndex(gwSquadFullByEntry, gwResults, players, gw, isFinal);
 
   // Manager DNA / FPL IQ — classify playing style and score decision quality
   // from the real signals accumulated above (captain calls, transfer ROI,
   // bench waste, chip timing) plus real league-wide ownership, not proxies.
   const deepStats = await loadDeepStats(Object.keys(managerHistoryMap));
-  await computeManagerDNA(managerHistoryMap, gw, gwSquadFullByEntry, ownershipCount, managers.length, deepStats);
+  await computeManagerDNA(managerHistoryMap, gw, deepStats);
   await computeFplIQ(managerHistoryMap, gw, deepStats);
   await computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsByElement, playersMeta, gw, isFinal);
   await computeDeathPlayer(gwSquadsRollup, managers, livePointsByElement, gw);
@@ -715,10 +747,11 @@ async function main() {
   if (isFinal || gwSafelyDone) {
     await generateAutopsyIfNeeded(gw, { gwWinner, gwLoser, biggestBench, mostHits, mostCaptained, avgPoints });
   }
-  // These two check fixture-day readiness internally (see
-  // checkTodaysFixturesReady), so they're called every sync regardless of
-  // whole-GW isFinal status — they update themselves once each matchday's
-  // games actually finish, not just once at the very end of the gameweek.
+  // These check matchday readiness internally (see findLatestReadyMatchday),
+  // so they're called every sync regardless of whole-GW isFinal status —
+  // they update themselves once each matchday's games actually finish, not
+  // just once at the very end of the gameweek (and not blocked by one
+  // rearranged fixture still pending later in the week).
   await generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints, playersMeta);
   await generatePressConferenceIfNeeded(gw, gwResults, avgPoints);
   await generateMicroBanterIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, playersMeta);
@@ -779,13 +812,93 @@ async function loadDeepStats(entryIds) {
     snaps.forEach((s, i) => { if (s.exists) m[entryIds[i]] = s.data(); });
     return m;
   }
-  const [lostPointsMap, actualVsPerfectMap, transferROIMap, chipMap] = await Promise.all([
+  const [lostPointsMap, actualVsPerfectMap, transferROIMap, chipMap, ownershipMap, luckMap] = await Promise.all([
     readAll("lostPoints"),
     readAll("actualVsPerfect"),
     readAll("transferROI"),
     readAll("chipPerformance"),
+    readAll("ownershipHistory"),
+    readAll("luckIndex"),
   ]);
-  return { lostPointsMap, actualVsPerfectMap, transferROIMap, chipMap };
+  return { lostPointsMap, actualVsPerfectMap, transferROIMap, chipMap, ownershipMap, luckMap };
+}
+
+// Ownership History — season-long running average of how "template" or
+// "differential" a squad has been, instead of a single current-week
+// snapshot. A snapshot is noisy: transfer in 3 differentials the day
+// before a sync and you'd look like a maverick even if the rest of the
+// season was pure template. Guarded by processedGws only, NOT isFinal —
+// squad composition locks the moment the gameweek deadline passes, well
+// before bonus points (and therefore isFinal) are confirmed, so there's no
+// reason to wait for that.
+async function computeOwnershipHistory(gwSquadFullByEntry, ownershipCount, totalManagers, gw) {
+  if (!gw || totalManagers === 0) return;
+  const writes = [];
+  for (const [entryId, squad] of Object.entries(gwSquadFullByEntry)) {
+    const ref = db.doc(`ownershipHistory/${entryId}`);
+    const snap = await ref.get();
+    const existing = snap.exists ? snap.data() : { templateSum: 0, diffSum: 0, gwCount: 0, processedGws: [] };
+    if ((existing.processedGws || []).includes(gw)) continue;
+    const myIds = [...squad.starting.map((p) => p.element), ...squad.bench.map((p) => p.element)];
+    if (myIds.length === 0) continue;
+    const ownershipPct = myIds.map((id) => ((ownershipCount[id]||0) / totalManagers) * 100);
+    const templateThisGw = ownershipPct.reduce((s,v)=>s+v,0) / myIds.length;
+    const diffThreshold = Math.max(1, Math.round(totalManagers * 0.15));
+    const diffThisGw = (myIds.filter((id) => (ownershipCount[id]||0) <= diffThreshold).length / myIds.length) * 100;
+    writes.push(ref.set({
+      entryId: parseInt(entryId),
+      templateSum: (existing.templateSum||0) + templateThisGw,
+      diffSum: (existing.diffSum||0) + diffThisGw,
+      gwCount: (existing.gwCount||0) + 1,
+      processedGws: [...(existing.processedGws||[]), gw],
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }));
+  }
+  if (writes.length > 0) {
+    await Promise.all(writes);
+    console.log(`Ownership history updated for ${writes.length} managers (GW${gw})`);
+  }
+}
+
+// Luck Index — separates process from outcome. "Expected" points for your
+// starting XI this GW = sum of each player's season-to-date points-per-game
+// (FPL's own `points_per_game` field, already free in bootstrap data) ×
+// their multiplier. Comparing that to what you ACTUALLY scored shows
+// whether a result came from genuine overperformance (a haul above a
+// player's normal level) or just from owning strong players who were
+// always going to score well. Caveat kept honest: this uses full-season-
+// to-date PPG, which includes this GW's own result in the average — a
+// slight look-ahead bias that mutes the size of the gap a little. Good
+// enough for a season-long "was I lucky or good" signal; not a strict
+// pre-registered forecast. isFinal-gated + processedGws guarded like every
+// other scored-outcome accumulator here.
+async function computeLuckIndex(gwSquadFullByEntry, gwResults, players, gw, isFinal) {
+  if (!isFinal) return;
+  const writes = [];
+  for (const [entryId, squad] of Object.entries(gwSquadFullByEntry)) {
+    const r = gwResults.find((x) => String(x.entryId) === String(entryId));
+    if (!r) continue;
+    const ref = db.doc(`luckIndex/${entryId}`);
+    const snap = await ref.get();
+    const existing = snap.exists ? snap.data() : { totalActual: 0, totalExpected: 0, processedGws: [] };
+    if ((existing.processedGws || []).includes(gw)) continue;
+    const expected = squad.starting.reduce((s, p) => {
+      const ppg = parseFloat(players.get(p.element)?.points_per_game) || 0;
+      return s + ppg * (p.multiplier||1);
+    }, 0);
+    writes.push(ref.set({
+      entryId: parseInt(entryId),
+      teamName: r.teamName,
+      totalActual: (existing.totalActual||0) + r.gwPoints,
+      totalExpected: Math.round(((existing.totalExpected||0) + expected)*10)/10,
+      processedGws: [...(existing.processedGws||[]), gw],
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }));
+  }
+  if (writes.length > 0) {
+    await Promise.all(writes);
+    console.log(`Luck Index updated for ${writes.length} managers (GW${gw})`);
+  }
 }
 
 // Transfer ROI — for every transfer, did the player bought outscore the
@@ -868,18 +981,47 @@ async function computeChipPerformance(gwSquadFullByEntry, gwResults, avgPoints, 
   }
 }
 
+// Compound archetypes — the top-2 traits combine into a distinct label
+// instead of collapsing to a single dominant trait, which discarded most of
+// the texture (two very different managers could land on the same label).
+// Falls back to a solo specialist label only when one trait clearly
+// dominates (25+ point gap over the second) — a genuine specialist
+// shouldn't get a hybrid name just because their #2 trait is a rounding
+// error above #3.
+const SOLO_ARCHETYPES = { gambler:"🎲 Gambler", template:"📋 Set & Forget", consistent:"🪨 Steady Eddie", clutch:"⚡ Clutch Player", differential:"🦄 Contrarian" };
+const PAIR_ARCHETYPES = {
+  "gambler|template": "🎰 Reckless Copycat",
+  "consistent|gambler": "🎯 Calculated Risk-Taker",
+  "clutch|gambler": "🔥 Boom or Bust",
+  "differential|gambler": "🎰 Wild Maverick",
+  "consistent|template": "📐 The Spreadsheet",
+  "clutch|template": "🐑 Smart Sheep",
+  "differential|template": "🧩 Balanced Hybrid",
+  "clutch|consistent": "🪨 Silent Assassin",
+  "consistent|differential": "🔬 Quiet Genius",
+  "clutch|differential": "🦄 Momentum Maverick",
+};
+function archetypeFor(traits) {
+  const sorted = Object.entries(traits).sort((a,b)=>b[1]-a[1]);
+  const [t1,v1] = sorted[0], [t2,v2] = sorted[1];
+  if (v1 - v2 >= 25) return SOLO_ARCHETYPES[t1];
+  const key = [t1,t2].sort().join("|");
+  return PAIR_ARCHETYPES[key] || SOLO_ARCHETYPES[t1];
+}
+
 // Manager DNA — classifies each manager's season-long playing style from
-// their actual decisions. Scores 5 traits (0-100 each) and picks the
-// dominant archetype, exactly as before — but Template and Differential are
-// now computed from REAL current-squad ownership (ownershipCount, built
-// league-wide from this GW's actual squads) instead of a transfer-frequency
-// proxy that couldn't tell a template-hoarder from a genuine rotator. Also
-// layers on a "deep dive" built from the accumulators above: boom/bust
-// range, captain conviction, transfer ROI, chip timing. Needs at least 3
+// their actual decisions. Template/Differential now read the season-long
+// running average from Ownership History (not a single current-week
+// snapshot), and the archetype is a compound of the top-2 traits (see
+// above) rather than one dominant trait swallowing all the texture. Layers
+// on a "deep dive" built from the accumulators: boom/bust range, captain
+// conviction, transfer ROI, chip timing, and Luck Index (actual vs
+// expected points, so a hot run reads as "lucky" or "process" correctly).
+// A `confidence` field (1-5) is attached so a 3-gameweek read doesn't look
+// as authoritative as a 25-gameweek one on the frontend. Needs at least 3
 // gameweeks of data to be meaningful.
-async function computeManagerDNA(managerHistoryMap, currentGw, gwSquadFullByEntry, ownershipCount, totalManagers, deepStats) {
+async function computeManagerDNA(managerHistoryMap, currentGw, deepStats) {
   if (currentGw < 3) return;
-  const ARCHETYPES = { gambler:"🎲 Gambler", template:"📋 Set & Forget", consistent:"🪨 Steady Eddie", clutch:"⚡ Clutch Player", differential:"🦄 Contrarian" };
   const raw = [];
   for (const [entryId, m] of Object.entries(managerHistoryMap)) {
     const history = m.fullHistory.filter(h => h.gw <= currentGw);
@@ -894,40 +1036,39 @@ async function computeManagerDNA(managerHistoryMap, currentGw, gwSquadFullByEntr
     const rankImprovements = history.filter((h,i)=>i>0&&h.rank<history[i-1].rank).length;
     const clutchScore = Math.round((rankImprovements/Math.max(gwCount-1,1))*100);
 
-    // Template & Differential — real ownership, not a proxy. Bandwagon =
-    // average % of the league that also owns each of your 15 players right
-    // now. Differential = % of your squad owned by 15% or fewer of the league.
-    const squad = gwSquadFullByEntry[entryId];
-    let templateScore = 0, differentialScore = 0;
-    if (squad && totalManagers > 0) {
-      const myIds = [...squad.starting.map(p=>p.element), ...squad.bench.map(p=>p.element)];
-      const ownershipPct = myIds.map((id) => ((ownershipCount[id]||0) / totalManagers) * 100);
-      templateScore = Math.round(ownershipPct.reduce((s,v)=>s+v,0) / myIds.length);
-      const diffThreshold = Math.max(1, Math.round(totalManagers * 0.15));
-      differentialScore = Math.round((myIds.filter((id) => (ownershipCount[id]||0) <= diffThreshold).length / myIds.length) * 100);
-    }
+    // Template & Differential — season-long average from Ownership History,
+    // not a single-week snapshot that could be thrown off by a transfer
+    // made the day before this sync ran.
+    const own = deepStats.ownershipMap[entryId];
+    const templateScore = own && own.gwCount > 0 ? Math.round(own.templateSum/own.gwCount) : 0;
+    const differentialScore = own && own.gwCount > 0 ? Math.round(own.diffSum/own.gwCount) : 0;
 
     const traits = { gambler: gamblerScore, template: templateScore, consistent: consistencyScore, clutch: clutchScore, differential: differentialScore };
-    const topTrait = Object.entries(traits).sort((a,b)=>b[1]-a[1])[0][0];
+    const archetype = archetypeFor(traits);
 
     const avp = deepStats.actualVsPerfectMap[entryId];
     const troi = deepStats.transferROIMap[entryId];
     const chips = deepStats.chipMap[entryId];
+    const luck = deepStats.luckMap[entryId];
     const bestGw = Math.max(...scores), worstGw = Math.min(...scores);
     const avpGwCount = avp ? (avp.processedGws||[]).length : 0;
+    const luckGwCount = luck ? (luck.processedGws||[]).length : 0;
 
     raw.push({
-      entryId, teamName: m.entry_name, traits, archetype: ARCHETYPES[topTrait],
+      entryId, teamName: m.entry_name, traits, archetype,
+      confidence: Math.min(5, Math.max(1, Math.round(gwCount/4))),
       boomBust: { ratio: worstGw > 0 ? Math.round((bestGw/worstGw)*10)/10 : bestGw, bestGw, worstGw },
       captainConviction: avp && avpGwCount > 0 ? { hitRate: Math.round((avp.perfectCount/avpGwCount)*100), bestCall: avp.bestCall||null, worstCall: avp.worstCall||null } : null,
       transferROI: troi && troi.totalTransfers > 0 ? { avgROI: Math.round((troi.totalROI/troi.totalTransfers)*10)/10, totalTransfers: troi.totalTransfers, bestSwap: troi.bestSwap||null, worstSwap: troi.worstSwap||null } : null,
       chips: chips ? chips.chips : [],
+      luckIndex: luck && luckGwCount > 0 ? { total: Math.round((luck.totalActual-luck.totalExpected)*10)/10, perGw: Math.round(((luck.totalActual-luck.totalExpected)/luckGwCount)*10)/10 } : null,
     });
   }
 
-  // Rank transfer ROI across the league so the frontend can show "top 20%"
-  // rather than just a bare average.
+  // Rank Transfer ROI and Luck Index across the league so the frontend can
+  // show "top 20%" rather than just a bare average.
   const roiVals = raw.filter(x=>x.transferROI).map(x=>x.transferROI.avgROI).sort((a,b)=>a-b);
+  const luckVals = raw.filter(x=>x.luckIndex).map(x=>x.luckIndex.total).sort((a,b)=>a-b);
   const percentileOf = (val, sorted) => sorted.length<2 ? 50 : Math.round((sorted.filter(v=>v<val).length/(sorted.length-1))*100);
 
   const writes = raw.map((x) => db.doc(`managerDNA/${x.entryId}`).set({
@@ -935,11 +1076,13 @@ async function computeManagerDNA(managerHistoryMap, currentGw, gwSquadFullByEntr
     teamName: x.teamName,
     archetype: x.archetype,
     traits: x.traits,
+    confidence: x.confidence,
     deepDive: {
       boomBust: x.boomBust,
       captainConviction: x.captainConviction,
       transferROI: x.transferROI ? { ...x.transferROI, percentile: percentileOf(x.transferROI.avgROI, roiVals) } : null,
       chips: x.chips,
+      luckIndex: x.luckIndex ? { ...x.luckIndex, percentile: percentileOf(x.luckIndex.total, luckVals) } : null,
     },
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   }));
@@ -949,77 +1092,147 @@ async function computeManagerDNA(managerHistoryMap, currentGw, gwSquadFullByEntr
   }
 }
 
-// FPL IQ — a composite decision-quality score built from real decision
-// signals instead of raw outcome totals:
-//   Captain IQ      — from Actual vs Perfect's accumulated gap (was the
-//                      captain actually your best starting-XI option?)
-//   Transfer IQ     — from Transfer ROI's accumulated delta (did the swap
-//                      pay off, not just "did you avoid a hit")
-//   Bench IQ        — from Lost Points' accumulated waste — the SAME
-//                      "bench player beat your weakest starter" definition
-//                      used on the Lost Points Index card, not a second,
-//                      competing formula that just penalises any bench
-//                      points at all
-//   Consistency IQ  — unchanged: inverse of score variance
-//   Chip IQ         — NEW: average percentile of your chip weeks vs the
-//                      league that same week
-// Pillars that need isFinal-gated data show as a neutral 50 until at least
-// one gameweek has been fully confirmed — shows from GW1, gets sharper as
-// the season builds real signal.
+// FPL IQ — a composite decision-quality score, rebuilt to be self-
+// calibrating instead of running on hand-picked scoring constants:
+//
+//  1. Every raw metric (captain gap, bench waste, transfer ROI, chip
+//     percentile) is first pulled toward the LEAGUE'S OWN average via
+//     Bayesian shrinkage, weighted by how much data backs it — a manager
+//     with 2 gameweeks of captain data doesn't get to look "Elite" off one
+//     lucky pick; they sit close to the league average until more evidence
+//     accumulates. The shrinkage constant (k) is the number of "pretend
+//     average gameweeks/transfers/chips" blended in before trusting the
+//     observed value.
+//  2. Consistency is measured as the spread of your WEEKLY Z-SCORE against
+//     that week's league mean (using mean absolute deviation, a robust
+//     spread measure), not your own raw score variance — so a blank
+//     gameweek for the entire league doesn't read as personal
+//     inconsistency, and a single monster haul doesn't distort the read.
+//  3. Every shrunk raw metric is then PERCENTILE-RANKED against the field —
+//     this is what makes the whole system self-calibrating. It doesn't
+//     matter whether this league's average bench waste is 2 pts/gw or 8;
+//     sitting in the top 10% always maps to a high score.
+//  4. The 5 pillar weights are no longer a fixed guess — they're blended
+//     50/50 between a sensible prior and each pillar's actual correlation
+//     with season total points IN THIS LEAGUE, so the composite reflects
+//     what's actually predictive here rather than what sounds reasonable.
+// A `confidence` field (1-5, from total gameweeks played) is attached so a
+// 3-gameweek read is visibly less certain than a 25-gameweek one.
 async function computeFplIQ(managerHistoryMap, currentGw, deepStats) {
+  const entries = Object.entries(managerHistoryMap);
+
+  // League-wide priors for shrinkage — what a manager with zero decisions
+  // counted yet should be assumed to look like.
+  let sumGap=0, cntGapGw=0, sumBench=0, cntBenchGw=0, sumROI=0, cntROITransfers=0, sumChipPct=0, cntChips=0;
+  entries.forEach(([entryId]) => {
+    const avp = deepStats.actualVsPerfectMap[entryId]; if (avp) { sumGap += avp.totalGap; cntGapGw += (avp.processedGws||[]).length; }
+    const lp = deepStats.lostPointsMap[entryId]; if (lp) { sumBench += lp.totalLost; cntBenchGw += (lp.processedGws||[]).length; }
+    const troi = deepStats.transferROIMap[entryId]; if (troi) { sumROI += troi.totalROI; cntROITransfers += troi.totalTransfers; }
+    const chips = deepStats.chipMap[entryId]; if (chips) chips.chips.forEach((c) => { sumChipPct += c.percentile; cntChips++; });
+  });
+  const priorGap = cntGapGw > 0 ? sumGap/cntGapGw : 2;
+  const priorBench = cntBenchGw > 0 ? sumBench/cntBenchGw : 2;
+  const priorROI = cntROITransfers > 0 ? sumROI/cntROITransfers : 0;
+  const priorChipPct = cntChips > 0 ? sumChipPct/cntChips : 50;
+  const K_GW = 4, K_TRANSFERS = 3, K_CHIPS = 2; // "pretend" sample sizes blended in before trusting the observed value
+
+  // Per-GW league mean + robust spread (mean absolute deviation), used to
+  // z-score each manager's week against the FIELD that week rather than
+  // their own season average.
+  const byGw = {};
+  Object.values(managerHistoryMap).forEach((m) => m.fullHistory.forEach((h) => { if (h.gw <= currentGw) (byGw[h.gw] = byGw[h.gw]||[]).push(h.points||0); }));
+  const gwStats = {};
+  Object.entries(byGw).forEach(([gwKey, arr]) => {
+    const gMean = arr.reduce((s,v)=>s+v,0)/arr.length;
+    const mad = arr.reduce((s,v)=>s+Math.abs(v-gMean),0)/arr.length;
+    gwStats[gwKey] = { mean: gMean, spread: Math.max(mad,1) };
+  });
+
   const raw = [];
-  for (const [entryId, m] of Object.entries(managerHistoryMap)) {
+  for (const [entryId, m] of entries) {
     const history = m.fullHistory.filter(h => h.gw <= currentGw);
     if (history.length < 1) continue;
-    const gwCount = history.length;
-    const scores = history.map(h=>h.points||0);
-    const mean = scores.reduce((s,v)=>s+v,0)/gwCount;
-    const variance = scores.reduce((s,v)=>s+Math.pow(v-mean,2),0)/gwCount;
-    const consistencyIQ = Math.max(0, 100 - Math.round(Math.sqrt(variance)*2));
+
+    const zScores = history.map((h) => { const gs = gwStats[h.gw]; return gs ? ((h.points||0)-gs.mean)/gs.spread : 0; });
+    const zMean = zScores.reduce((s,v)=>s+v,0)/zScores.length;
+    const zSpread = zScores.reduce((s,v)=>s+Math.abs(v-zMean),0)/zScores.length;
 
     const avp = deepStats.actualVsPerfectMap[entryId];
     const avpGws = avp ? (avp.processedGws||[]).length : 0;
-    const captainIQ = avp && avpGws > 0 ? Math.max(0, 100 - Math.round((avp.totalGap/avpGws)*6)) : 50;
+    const avgGap = avpGws > 0 ? avp.totalGap/avpGws : priorGap;
+    const shrunkGap = (avpGws*avgGap + K_GW*priorGap) / (avpGws+K_GW);
 
     const lp = deepStats.lostPointsMap[entryId];
     const lpGws = lp ? (lp.processedGws||[]).length : 0;
-    const benchIQ = lp && lpGws > 0 ? Math.max(0, 100 - Math.round((lp.totalLost/lpGws)*2.5)) : 50;
+    const avgBench = lpGws > 0 ? lp.totalLost/lpGws : priorBench;
+    const shrunkBench = (lpGws*avgBench + K_GW*priorBench) / (lpGws+K_GW);
 
     const troi = deepStats.transferROIMap[entryId];
-    const transferIQ = troi && troi.totalTransfers > 0 ? Math.max(0, Math.min(100, 50 + Math.round((troi.totalROI/troi.totalTransfers)*4))) : 50;
+    const tCount = troi ? troi.totalTransfers : 0;
+    const avgROI = tCount > 0 ? troi.totalROI/tCount : priorROI;
+    const shrunkROI = (tCount*avgROI + K_TRANSFERS*priorROI) / (tCount+K_TRANSFERS);
 
     const chips = deepStats.chipMap[entryId];
-    const chipIQ = chips && chips.chips.length > 0 ? Math.round(chips.chips.reduce((s,c)=>s+c.percentile,0)/chips.chips.length) : 50;
-
-    const iq = Math.round(captainIQ*0.25 + transferIQ*0.25 + benchIQ*0.20 + consistencyIQ*0.15 + chipIQ*0.15);
-    const label = iq>=85?"🧠 Elite":iq>=70?"🎓 Sharp":iq>=55?"📚 Learning":iq>=40?"🤔 Questionable":"💀 What Are You Doing";
+    const chipCount = chips ? chips.chips.length : 0;
+    const avgChipPct = chipCount > 0 ? chips.chips.reduce((s,c)=>s+c.percentile,0)/chipCount : priorChipPct;
+    const shrunkChip = (chipCount*avgChipPct + K_CHIPS*priorChipPct) / (chipCount+K_CHIPS);
 
     raw.push({
-      entryId, teamName: m.entry_name, iq, label,
-      breakdown: { captainIQ, transferIQ, benchIQ, consistencyIQ, chipIQ },
-      evidence: {
-        bestCaptain: avp?.bestCall || null,
-        worstCaptain: avp?.worstCall || null,
-        bestTransfer: troi?.bestSwap || null,
-        worstTransfer: troi?.worstSwap || null,
-      },
+      entryId, teamName: m.entry_name, totalPoints: history[history.length-1]?.totalPoints || 0,
+      rawVals: { captain: -shrunkGap, transfer: shrunkROI, bench: -shrunkBench, consistency: -zSpread, chip: shrunkChip },
+      sampleSizes: { captainGws: avpGws, benchGws: lpGws, transfers: tCount, chips: chipCount, totalGws: history.length },
+      evidence: { bestCaptain: avp?.bestCall||null, worstCaptain: avp?.worstCall||null, bestTransfer: troi?.bestSwap||null, worstTransfer: troi?.worstSwap||null },
     });
   }
-  const iqVals = raw.map(x=>x.iq).sort((a,b)=>a-b);
-  const percentileOf = (val) => iqVals.length<2 ? 50 : Math.round((iqVals.filter(v=>v<val).length/(iqVals.length-1))*100);
-  const writes = raw.map((x) => db.doc(`fplIQ/${x.entryId}`).set({
-    entryId: parseInt(x.entryId),
-    teamName: x.teamName,
-    iq: x.iq,
-    label: x.label,
-    percentile: percentileOf(x.iq),
-    breakdown: x.breakdown,
-    evidence: x.evidence,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  }));
+
+  const PILLARS = ["captain","transfer","bench","consistency","chip"];
+  const sortedVals = {}; PILLARS.forEach((p) => { sortedVals[p] = raw.map((x) => x.rawVals[p]).sort((a,b)=>a-b); });
+  const percentileOf = (val, arr) => arr.length<2 ? 50 : Math.round((arr.filter((v) => v<val).length/(arr.length-1))*100);
+  raw.forEach((x) => { x.pillarScores = {}; PILLARS.forEach((p) => { x.pillarScores[p] = percentileOf(x.rawVals[p], sortedVals[p]); }); });
+
+  // Data-driven weighting: correlate each pillar's percentile score with
+  // season total points across the league, blended 50/50 with a fixed
+  // prior so a handful of gameweeks' worth of noisy correlation can't swing
+  // the composite wildly early in the season.
+  const PRIOR_WEIGHTS = { captain:0.25, transfer:0.25, bench:0.20, consistency:0.15, chip:0.15 };
+  function pearson(xs, ys) {
+    const n = xs.length; if (n < 3) return 0;
+    const mx = xs.reduce((s,v)=>s+v,0)/n, my = ys.reduce((s,v)=>s+v,0)/n;
+    const num = xs.reduce((s,v,i)=>s+(v-mx)*(ys[i]-my),0);
+    const den = Math.sqrt(xs.reduce((s,v)=>s+(v-mx)**2,0) * ys.reduce((s,v)=>s+(v-my)**2,0));
+    return den>0 ? num/den : 0;
+  }
+  const totalPointsArr = raw.map((x) => x.totalPoints);
+  const corrs = {}; PILLARS.forEach((p) => { corrs[p] = Math.abs(pearson(raw.map((x) => x.pillarScores[p]), totalPointsArr)); });
+  const corrSum = PILLARS.reduce((s,p)=>s+corrs[p],0) || 1;
+  const weights = {}; PILLARS.forEach((p) => { weights[p] = 0.5*PRIOR_WEIGHTS[p] + 0.5*(corrs[p]/corrSum); });
+  const wSum = PILLARS.reduce((s,p)=>s+weights[p],0);
+  PILLARS.forEach((p) => { weights[p] = weights[p]/wSum; });
+
+  raw.forEach((x) => { x.iq = Math.round(PILLARS.reduce((s,p)=>s+x.pillarScores[p]*weights[p],0)); });
+  const iqVals = raw.map((x) => x.iq).sort((a,b)=>a-b);
+  const percentileOfIQ = (val) => iqVals.length<2 ? 50 : Math.round((iqVals.filter((v) => v<val).length/(iqVals.length-1))*100);
+
+  const writes = raw.map((x) => {
+    const label = x.iq>=85?"🧠 Elite":x.iq>=70?"🎓 Sharp":x.iq>=55?"📚 Learning":x.iq>=40?"🤔 Questionable":"💀 What Are You Doing";
+    const confidence = Math.min(5, Math.max(1, Math.round(x.sampleSizes.totalGws/4)));
+    return db.doc(`fplIQ/${x.entryId}`).set({
+      entryId: parseInt(x.entryId),
+      teamName: x.teamName,
+      iq: x.iq,
+      label,
+      percentile: percentileOfIQ(x.iq),
+      confidence,
+      breakdown: { captainIQ: x.pillarScores.captain, transferIQ: x.pillarScores.transfer, benchIQ: x.pillarScores.bench, consistencyIQ: x.pillarScores.consistency, chipIQ: x.pillarScores.chip },
+      weights,
+      evidence: x.evidence,
+      sampleSizes: x.sampleSizes,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
   if (writes.length > 0) {
     await Promise.all(writes);
-    console.log(`FPL IQ computed for ${writes.length} managers`);
+    console.log(`FPL IQ computed for ${writes.length} managers (weights: ${JSON.stringify(weights)})`);
   }
 }
 
@@ -1090,34 +1303,38 @@ async function computeGotAway(managerHistoryMap, gwTransfersRollup, livePointsBy
 function todayNPTServer() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kathmandu" }).format(new Date());
 }
-function sameNPTDateServer(isoString, dateStr) {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kathmandu" }).format(new Date(isoString)) === dateStr;
-}
-async function checkTodaysFixturesReady(gw) {
+// Finds the most recently fully-completed "matchday" (a calendar date, NPT)
+// within this gameweek's fixtures — NOT "today", and NOT "the whole
+// gameweek". The old version of this logic only checked whether fixtures
+// scheduled on TODAY'S date were done, and only had a fallback for once the
+// ENTIRE gameweek finished. That broke in the very common case of a
+// rearranged/midweek fixture: if one match in the GW gets pushed to
+// Wednesday (a top-6 European clash, a postponement), the "whole GW done"
+// fallback never fires until Wednesday — even though Friday/Saturday/Sunday's
+// results have been sitting there fully confirmed the entire time, and
+// someone checking the site Monday or Tuesday sees nothing. This instead
+// looks at every calendar date that has fixtures, keeps only the ones
+// where EVERY fixture that day has finished AND the date isn't in the
+// future, and returns the latest such date — so Monday's sync correctly
+// finds "Sunday was the last fully-done matchday" even with a Wednesday
+// fixture still pending, and content generates and updates incrementally
+// as each day's results land, regardless of what day someone actually
+// opens the site.
+async function findLatestReadyMatchday(gw) {
   const snap = await db.doc(`gameweekFixtures/gw${gw}`).get();
-  if (!snap.exists) return { ready: false, today: null };
+  if (!snap.exists) return null;
   const fixtures = snap.data().fixtures || [];
+  if (fixtures.length === 0) return null;
+  const byDate = {};
+  fixtures.forEach((f) => {
+    const d = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kathmandu" }).format(new Date(f.kickoff));
+    (byDate[d] = byDate[d] || []).push(f);
+  });
   const today = todayNPTServer();
-  const todaysFixtures = fixtures.filter((f) => sameNPTDateServer(f.kickoff, today));
-  if (todaysFixtures.length === 0) return { ready: false, today }; // nothing scheduled today — don't spend a call
-  const allDone = todaysFixtures.every((f) => f.finished);
-  return { ready: allDone, today };
-}
-
-// Catch-up path for the per-matchday AI content (Press Conference, Court,
-// Micro Banter): the day-based check above only fires on a day that
-// genuinely HAS fixtures scheduled — if that window gets missed for any
-// reason (an outage, a missing API key, etc), "today" eventually has zero
-// fixtures for this GW ever again, and it would otherwise be stuck forever
-// with no way to catch up. This checks whether the whole gameweek is done
-// regardless of what day it is, so a missed window still resolves itself
-// on the next sync rather than staying broken until the next gameweek.
-async function checkGwFullyDoneRegardlessOfDay(gw) {
-  const snap = await db.doc(`gameweekFixtures/gw${gw}`).get();
-  if (!snap.exists) return false;
-  const fixtures = snap.data().fixtures || [];
-  if (fixtures.length === 0) return false;
-  return fixtures.every((f) => f.finished);
+  const readyDates = Object.keys(byDate)
+    .filter((d) => d <= today && byDate[d].every((f) => f.finished))
+    .sort();
+  return readyDates.length ? readyDates[readyDates.length - 1] : null;
 }
 
 // A second, independent path to "is this gameweek safely done" for the
@@ -1151,10 +1368,9 @@ async function generateMicroBanterIfNeeded(gw, gwResults, gwSquadsRollup, livePo
   const ref = db.doc(`microBanter/gw${gw}`);
   const existing = await ref.get();
   const existingData = existing.exists ? existing.data() : null;
-  const { ready, today } = await checkTodaysFixturesReady(gw);
-  const catchUp = !existingData && (await checkGwFullyDoneRegardlessOfDay(gw));
-  if (!ready && !catchUp) return;
-  if (existingData?.lastGeneratedForDate === today) return;
+  const latestReady = await findLatestReadyMatchday(gw);
+  if (!latestReady) return;
+  if (existingData?.lastGeneratedForDate === latestReady) return;
   const byPoints = [...gwResults].sort((a,b)=>b.gwPoints-a.gwPoints);
   const winner = byPoints[0];
   const biggestBench = [...gwResults].sort((a,b)=>b.benchPoints-a.benchPoints)[0];
@@ -1178,7 +1394,7 @@ ${facts.map(f=>`- ${f}`).join('\n')}`;
   if (lines.length === 0) return;
   await ref.set({
     gw,
-    lastGeneratedForDate: today,
+    lastGeneratedForDate: latestReady,
     lines,
     generatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
@@ -1190,10 +1406,9 @@ async function generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePoint
   const ref = db.doc(`fplCourt/gw${gw}`);
   const existing = await ref.get();
   const existingData = existing.exists ? existing.data() : null;
-  const { ready, today } = await checkTodaysFixturesReady(gw);
-  const catchUp = !existingData && (await checkGwFullyDoneRegardlessOfDay(gw));
-  if (!ready && !catchUp) return;
-  if (existingData?.lastGeneratedForDate === today) return; // already reflects today's results
+  const latestReady = await findLatestReadyMatchday(gw);
+  if (!latestReady) return;
+  if (existingData?.lastGeneratedForDate === latestReady) return; // already reflects this matchday's results
   // Find the defendant: manager with highest bench points (biggest waste)
   // — the most visually dramatic FPL crime, every single week
   const defendant = [...gwResults].sort((a,b)=>b.benchPoints-a.benchPoints)[0];
@@ -1231,7 +1446,7 @@ Return ONLY a JSON object with keys "prosecution" and "defence". No markdown, no
   }
   await ref.set({
     gw,
-    lastGeneratedForDate: today,
+    lastGeneratedForDate: latestReady,
     defendant: { entryId: defendant.entryId, teamName: defendant.teamName, managerName: defendant.managerName, crime: `${defendant.benchPoints} bench points wasted` },
     prosecution: parsed.prosecution || "",
     defence: parsed.defence || "",
@@ -1292,10 +1507,9 @@ async function generatePressConferenceIfNeeded(gw, gwResults, avgPoints) {
   const ref = db.doc(`pressConference/gw${gw}`);
   const existing = await ref.get();
   const existingData = existing.exists ? existing.data() : null;
-  const { ready, today } = await checkTodaysFixturesReady(gw);
-  const catchUp = !existingData && (await checkGwFullyDoneRegardlessOfDay(gw));
-  if (!ready && !catchUp) return;
-  if (existingData?.lastGeneratedForDate === today) return;
+  const latestReady = await findLatestReadyMatchday(gw);
+  if (!latestReady) return;
+  if (existingData?.lastGeneratedForDate === latestReady) return;
   const byPoints = [...gwResults].sort((a, b) => b.gwPoints - a.gwPoints);
   const winner = byPoints[0];
   const loser = byPoints[byPoints.length - 1];
@@ -1320,7 +1534,7 @@ Return ONLY a JSON object: { "winner": { "question": "...", "answer": "..." }, "
   }
   await ref.set({
     gw,
-    lastGeneratedForDate: today,
+    lastGeneratedForDate: latestReady,
     winner: { entryId: winner.entryId, teamName: winner.teamName, points: winner.gwPoints, ...parsed.winner },
     loser: { entryId: loser.entryId, teamName: loser.teamName, points: loser.gwPoints, ...parsed.loser },
     generatedAt: admin.firestore.FieldValue.serverTimestamp(),
