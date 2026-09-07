@@ -152,12 +152,22 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .shame-row .v{font-family:var(--font-m);color:var(--red);font-weight:700;flex-shrink:0;}
 .fx-weather{font-size:10px;}
 .bingo-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:10px;}
-.bingo-cell{background:var(--panel-glass);border:1px solid var(--line);border-radius:8px;padding:6px 3px;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-size:8.5px;color:var(--muted);line-height:1.3;transition:background .15s;cursor:pointer;}
+.bingo-cell{position:relative;background:var(--panel-glass);border:1px solid var(--line);border-radius:8px;padding:6px 3px;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-size:8.5px;color:var(--muted);line-height:1.3;transition:background .15s;cursor:pointer;}
 .bingo-cell.hit{background:rgba(57,255,136,.12);border-color:rgba(57,255,136,.4);color:var(--green);}
 .bingo-cell.bingo-line{background:rgba(0,229,255,.12);border-color:rgba(0,229,255,.4);color:var(--accent2);}
 .bingo-cell.free{background:rgba(255,46,146,.12);border-color:rgba(255,46,146,.4);color:var(--accent1);font-weight:700;}
 .bingo-cell-icon{font-size:14px;margin-bottom:2px;}
+.bingo-cell.rarity-uncommon{border-color:rgba(0,229,255,.35);}
+.bingo-cell.rarity-rare{border-color:rgba(255,196,0,.5);box-shadow:0 0 0 1px rgba(255,196,0,.15) inset;}
+.bingo-cell.rarity-legendary{border-color:rgba(255,46,146,.6);box-shadow:0 0 10px rgba(255,46,146,.3);}
+.bingo-cell.hit.rarity-rare{background:rgba(255,196,0,.16);color:#ffc400;}
+.bingo-cell.hit.rarity-legendary{background:rgba(255,46,146,.18);}
+.bingo-cell.rarity-rare::after{content:"⭐";position:absolute;top:1px;right:2px;font-size:6px;opacity:.85;}
+.bingo-cell.rarity-legendary::after{content:"👑";position:absolute;top:1px;right:2px;font-size:6px;opacity:.9;}
+.bingo-cat-tag{font-size:6.5px;text-transform:uppercase;letter-spacing:.05em;opacity:.55;margin-top:1px;}
 .bingo-banner{background:rgba(0,229,255,.1);border:1px solid rgba(0,229,255,.3);border-radius:10px;padding:8px 12px;text-align:center;margin-top:10px;font-family:var(--font-m);font-size:12px;color:var(--accent2);font-weight:700;}
+.bingo-featured{background:rgba(255,196,0,.08);border:1px solid rgba(255,196,0,.3);border-radius:10px;padding:7px 10px;margin-bottom:10px;font-size:11px;color:var(--muted);line-height:1.5;}
+.bingo-featured b{color:#ffc400;}
 .dna-archetype{font-size:22px;font-weight:700;font-family:var(--font-d);margin-bottom:6px;}
 .dna-traits{display:flex;flex-direction:column;gap:6px;margin-top:8px;}
 .dna-trait-row{display:flex;align-items:center;gap:8px;font-size:11px;}
@@ -1255,7 +1265,7 @@ button:active{ transform: translateY(1px) scale(.97); }
 import { firebaseConfig } from "./firebase-config.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
 import {
-  getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, collection, increment
+  getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, collection, increment, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
 
 const app = initializeApp(firebaseConfig);
@@ -1829,33 +1839,72 @@ async function renderAutopsyCard(){
 }
 
 // ---------- GW Bingo — personal card auto-ticked from real data ----------
+// 43-square rotating pool (see sync.js for the check logic + weekly draw).
+// Every manager's card each week is the SAME active 24 squares, just laid
+// out in their own personal shuffled order — so `cat`/`rarity` here double
+// as the "this week's board" summary: scan whatever ids show up in the
+// card you loaded and you've got the full active pool for the gameweek.
 const BINGO_SQUARE_META = {
-  captain_blank:  { icon:"😬", text:"Captain blanks",         detail:"Ticks if your captain scored fewer than 4 points this GW." },
-  haul_15:        { icon:"🔥", text:"Haul of 15+ pts",         detail:"Ticks if any starter in your XI scored 15 or more points." },
-  bench_beats:    { icon:"🪑", text:"Bench beats XI",          detail:"Ticks if your total bench points beat your starting XI's points." },
-  hit_scores:     { icon:"🎯", text:"Hit player scores 8+",    detail:"Ticks if you took a hit AND a starter scored 8 or more points." },
-  win_gw:         { icon:"🏆", text:"Win the GW",              detail:"Ticks if your score matched the highest score in the league this GW." },
-  no_transfers:   { icon:"🔒", text:"No transfers",            detail:"Ticks if you made zero transfers this gameweek." },
-  under_avg:      { icon:"📉", text:"Below league avg",        detail:"Ticks if you scored more than 2 points below the league average." },
-  diff_scores:    { icon:"🦄", text:"Diff scores 10+",         detail:"Ticks if a low-ownership player (2 or fewer owners) in your XI scored 10+." },
-  best_on_bench:  { icon:"😭", text:"Best on bench",           detail:"Ticks if your single highest scorer this GW was sat on your bench." },
-  chip_played:    { icon:"⚡", text:"Chip played",             detail:"Ticks if you played any chip this gameweek." },
-  algorithm_beats:{ icon:"🤖", text:"Algorithm beats you",     detail:"Ticks if the Algorithm ghost team outscored you this GW." },
-  robot_beats:    { icon:"⚙️", text:"Robot beats you",         detail:"Ticks if the Robot ghost team outscored you this GW." },
-  madman_beats:   { icon:"🎲", text:"Madman beats you",        detail:"Ticks if the Madman ghost team outscored you this GW." },
-  top_scorer:     { icon:"🏅", text:"Top points this GW",      detail:"Ticks if you had the single highest score in the league this GW." },
-  under_30:       { icon:"💀", text:"Score under 30",          detail:"Ticks if you scored fewer than 30 points this gameweek." },
-  hattrick:       { icon:"⚽", text:"Hat-trick in squad",      detail:"Ticks if any player in your starting XI scored a hat-trick." },
-  triple_captain: { icon:"3️⃣", text:"Triple captain",         detail:"Ticks if you played the Triple Captain chip this gameweek." },
-  big_hit:        { icon:"🫠", text:"Hit of 8+ pts",           detail:"Ticks if you took a transfer hit of 8 points or more." },
-  clean_sheet:    { icon:"🧱", text:"Clean sheet scored",      detail:"Ticks if a GK or defender in your XI kept a clean sheet." },
-  on_avg:         { icon:"📊", text:"Exactly on avg",          detail:"Ticks if your score landed within 1 point of the league average." },
-  captain_wins:   { icon:"🧠", text:"Captain beats all rivals'",detail:"Ticks if your captain's points beat every other manager's captain pick." },
-  climb_5:        { icon:"⬆️", text:"Climb 5+ places",         detail:"Ticks if you climbed 5 or more places in the overall table this GW." },
-  top_3:          { icon:"🥉", text:"Top 3 overall",           detail:"Ticks if you're currently sitting in the top 3 of the overall table." },
-  score_over_70:  { icon:"💥", text:"Score 70+ pts",           detail:"Ticks if you scored 70 or more points this gameweek." },
-  free:           { icon:"✨", text:"FREE",                    detail:"Free square — always counts, no condition to meet." },
+  // Captaincy
+  captain_blank:        { icon:"😬", cat:"Captaincy",  rarity:"common",    text:"Captain blanks",          detail:"Ticks if your captain scored fewer than 4 points this GW." },
+  captain_wins:         { icon:"🧠", cat:"Captaincy",  rarity:"rare",      text:"Best armband in the league",detail:"Ticks if your captain's actual points (after any multiplier) beat every other manager's captain pick." },
+  differential_captain: { icon:"🦄", cat:"Captaincy",  rarity:"rare",      text:"Differential armband hits",detail:"Ticks if you captained a player owned by 3 or fewer managers, and they scored 8+." },
+  template_captain_blank:{icon:"📛", cat:"Captaincy",  rarity:"uncommon",  text:"Template armband blanks",  detail:"Ticks if you captained the league's most-captained player and they scored under 4." },
+  captain_top_scorer:   { icon:"👑", cat:"Captaincy",  rarity:"legendary", text:"Captained the GW's top scorer",detail:"Ticks if your captain's raw points matched the single highest score by any player in the league this GW." },
+  // Transfers
+  hit_scores:           { icon:"🎯", cat:"Transfers",  rarity:"common",    text:"Hit player scores 8+",    detail:"Ticks if you took a hit AND a starter scored 8 or more points." },
+  no_transfers:         { icon:"🔒", cat:"Transfers",  rarity:"common",    text:"No transfers",            detail:"Ticks if you made zero transfers this gameweek." },
+  big_hit:              { icon:"🫠", cat:"Transfers",  rarity:"uncommon",  text:"Hit of 8+ pts",           detail:"Ticks if you took a transfer hit of 8 points or more." },
+  transfer_masterstroke:{ icon:"🧪", cat:"Transfers",  rarity:"rare",      text:"Transfer masterstroke",    detail:"Ticks if a player you brought in outscored the one you sold by 10+ points, same GW." },
+  transfer_flop:        { icon:"🤦", cat:"Transfers",  rarity:"uncommon",  text:"Sold a future haul",       detail:"Ticks if a player you sold outscored the one you brought in by 6+ points, same GW." },
+  panic_swap:           { icon:"😵", cat:"Transfers",  rarity:"common",    text:"3+ transfers in one week", detail:"Ticks if you made 3 or more transfers this gameweek." },
+  // Bench
+  bench_beats:          { icon:"🪑", cat:"Bench",      rarity:"rare",      text:"Bench beats XI",          detail:"Ticks if your total bench points beat your starting XI's points." },
+  best_on_bench:        { icon:"😭", cat:"Bench",      rarity:"common",    text:"Best on bench",           detail:"Ticks if your single highest scorer this GW was sat on your bench." },
+  costly_bench:         { icon:"💸", cat:"Bench",      rarity:"uncommon",  text:"12+ pts stuck on bench",  detail:"Ticks if a benched player scored 12 or more points." },
+  bench_fodder:         { icon:"🥶", cat:"Bench",      rarity:"common",    text:"Bench blanked entirely",  detail:"Ticks if every player on your bench scored zero." },
+  // Performance
+  under_avg:            { icon:"📉", cat:"Performance",rarity:"common",    text:"Below league avg",        detail:"Ticks if you scored more than 2 points below the league average." },
+  on_avg:               { icon:"📊", cat:"Performance",rarity:"uncommon",  text:"Exactly on avg",          detail:"Ticks if your score landed within 1 point of the league average." },
+  under_30:             { icon:"💀", cat:"Performance",rarity:"common",    text:"Score under 30",          detail:"Ticks if you scored fewer than 30 points this gameweek." },
+  score_over_70:        { icon:"💥", cat:"Performance",rarity:"rare",      text:"Score 70+ pts",           detail:"Ticks if you scored 70 or more points this gameweek." },
+  haul_15:              { icon:"🔥", cat:"Performance",rarity:"uncommon",  text:"Haul of 15+ pts",         detail:"Ticks if any starter in your XI scored 15 or more points." },
+  season_low:           { icon:"🧊", cat:"Performance",rarity:"rare",      text:"New season low",          detail:"Ticks if this is your lowest gameweek score of the season so far." },
+  season_high:          { icon:"🚀", cat:"Performance",rarity:"rare",      text:"New season high",         detail:"Ticks if this is your highest gameweek score of the season so far." },
+  nailed_it:            { icon:"✅", cat:"Performance",rarity:"uncommon",  text:"Full XI played 60+ mins",  detail:"Ticks if every one of your starters played 60 or more minutes." },
+  // Chips
+  chip_played:          { icon:"⚡", cat:"Chips",      rarity:"common",    text:"Chip played",             detail:"Ticks if you played any chip this gameweek." },
+  triple_captain:       { icon:"3️⃣", cat:"Chips",      rarity:"uncommon",  text:"Triple captain",          detail:"Ticks if you played the Triple Captain chip this gameweek." },
+  chip_backfire:        { icon:"🪤", cat:"Chips",      rarity:"rare",      text:"Chip backfired",          detail:"Ticks if you played a chip and still scored below the league average." },
+  // Chaos / rivalry
+  beat_the_bots:        { icon:"🤖", cat:"Chaos",      rarity:"rare",      text:"Beat all 3 ghost teams",  detail:"Ticks if you outscored the Algorithm, Robot, AND Madman ghost teams this GW." },
+  swept_by_bots:        { icon:"💀", cat:"Chaos",      rarity:"legendary", text:"Swept by the machines",   detail:"Ticks if the Algorithm, Robot, AND Madman ghost teams all outscored you this GW." },
+  climb_5:              { icon:"⬆️", cat:"Chaos",      rarity:"rare",      text:"Climb 5+ places",         detail:"Ticks if you climbed 5 or more places in the league table this GW." },
+  free_fall:            { icon:"⬇️", cat:"Chaos",      rarity:"rare",      text:"Drop 5+ places",          detail:"Ticks if you fell 5 or more places in the league table this GW." },
+  top_3:                { icon:"🥉", cat:"Chaos",      rarity:"legendary", text:"Top 3 overall",           detail:"Ticks if you're currently sitting in the top 3 of the league table." },
+  beat_the_leader:      { icon:"🎯", cat:"Chaos",      rarity:"uncommon",  text:"Out-scored the leader",   detail:"Ticks if you scored more than the current league leader this GW." },
+  closest_call:         { icon:"🤏", cat:"Chaos",      rarity:"common",    text:"Photo finish w/ a neighbour",detail:"Ticks if you scored within 1 point of whoever's right above or below you in the table." },
+  score_twin:           { icon:"👯", cat:"Chaos",      rarity:"common",    text:"Score twin",              detail:"Ticks if at least one other manager scored the exact same points as you this GW." },
+  diff_scores:          { icon:"🦄", cat:"Chaos",      rarity:"uncommon",  text:"Diff scores 10+",         detail:"Ticks if a low-ownership player (2 or fewer owners) in your XI scored 10+." },
+  // Match stats / milestones
+  hattrick:             { icon:"⚽", cat:"Milestones", rarity:"rare",      text:"Hat-trick in squad",      detail:"Ticks if any player in your starting XI scored a hat-trick." },
+  clean_sheet:          { icon:"🧱", cat:"Milestones", rarity:"common",    text:"Clean sheet scored",      detail:"Ticks if a GK or defender in your XI kept a clean sheet." },
+  clean_sheet_duo:      { icon:"🧱", cat:"Milestones", rarity:"uncommon",  text:"2+ clean sheets",         detail:"Ticks if two or more of your GK/defenders kept a clean sheet." },
+  assist_party:         { icon:"🎁", cat:"Milestones", rarity:"uncommon",  text:"2+ assists, one player",  detail:"Ticks if any starter recorded 2 or more assists." },
+  red_card_ruin:        { icon:"🟥", cat:"Milestones", rarity:"rare",      text:"Red card ruin",           detail:"Ticks if any starter picked up a red card." },
+  penalty_pain:         { icon:"🥅", cat:"Milestones", rarity:"uncommon",  text:"Missed penalty",          detail:"Ticks if any starter missed a penalty." },
+  bonus_magnet:         { icon:"⭐", cat:"Milestones", rarity:"common",    text:"Max bonus (3pts)",        detail:"Ticks if any starter earned the maximum 3 bonus points." },
+  own_goal_oops:        { icon:"🙈", cat:"Milestones", rarity:"legendary", text:"Own goal oops",           detail:"Ticks if any starter scored an own goal." },
+  free:                 { icon:"✨", cat:"Free",       rarity:"common",    text:"FREE",                    detail:"Free square — always counts, no condition to meet." },
+  // Legacy ids — kept only so past gameweeks' saved cards (from before this
+  // rotation existed) still render correctly instead of showing "?".
+  win_gw:               { icon:"🏆", cat:"Legacy",     rarity:"common",    text:"Win the GW",              detail:"Ticks if your score matched the highest score in the league this GW." },
+  top_scorer:           { icon:"🏅", cat:"Legacy",     rarity:"common",    text:"Top points this GW",      detail:"Ticks if you had the single highest score in the league this GW." },
+  algorithm_beats:      { icon:"🤖", cat:"Legacy",     rarity:"common",    text:"Algorithm beats you",     detail:"Ticks if the Algorithm ghost team outscored you this GW." },
+  robot_beats:          { icon:"⚙️", cat:"Legacy",     rarity:"common",    text:"Robot beats you",         detail:"Ticks if the Robot ghost team outscored you this GW." },
+  madman_beats:         { icon:"🎲", cat:"Legacy",     rarity:"common",    text:"Madman beats you",        detail:"Ticks if the Madman ghost team outscored you this GW." },
 };
+const BINGO_RARITY_RANK = { legendary:0, rare:1, uncommon:2, common:3 };
 function seededShuffleIds(arr, seed){
   const a=[...arr]; let s=seed;
   for(let i=a.length-1;i>0;i--){
@@ -1881,13 +1930,28 @@ async function renderBingoCard(){
   const data=snap.data();
   const card=data.card; const hits=data.hits; const bingoCount=data.bingoCount||0;
   const bingoLineIdxs=new Set(BINGO_LINES.filter(l=>l.every(i=>hits[i])).flat());
+  // This week's board is the same 24 squares for everyone (only the layout
+  // is shuffled per-manager) — so whatever ids are on the card you loaded
+  // ARE this week's full active pool. Surface the rare/legendary ones as a
+  // "what to watch for" callout above the grid.
+  const featured = card
+    .filter(sqId=>sqId!=="free")
+    .map(sqId=>({ sqId, meta: BINGO_SQUARE_META[sqId]||{text:sqId,rarity:"common"} }))
+    .filter(x=>x.meta.rarity==="rare"||x.meta.rarity==="legendary")
+    .sort((a,b)=>BINGO_RARITY_RANK[a.meta.rarity]-BINGO_RARITY_RANK[b.meta.rarity]);
+  const featuredHtml = featured.length
+    ? `<div class="bingo-featured">🎲 <b>This week's rotation</b> — ${featured.map(x=>`${x.meta.icon||""} ${x.meta.rarity==="legendary"?"<b>":""}${x.meta.text}${x.meta.rarity==="legendary"?"</b>":""}`).join(" · ")}</div>`
+    : "";
   container.innerHTML=`
+    ${featuredHtml}
     <div class="bingo-grid">${card.map((sqId,i)=>{
-      const meta=BINGO_SQUARE_META[sqId]||{icon:"?",text:sqId,detail:""};
+      const meta=BINGO_SQUARE_META[sqId]||{icon:"?",text:sqId,detail:"",rarity:"common"};
       const inLine=bingoLineIdxs.has(i);
-      const cls=sqId==="free"?"bingo-cell free":inLine?"bingo-cell bingo-line":hits[i]?"bingo-cell hit":"bingo-cell";
+      const rarityCls = sqId!=="free" && meta.rarity && meta.rarity!=="common" ? ` rarity-${meta.rarity}` : "";
+      const cls=(sqId==="free"?"bingo-cell free":inLine?"bingo-cell bingo-line":hits[i]?"bingo-cell hit":"bingo-cell")+rarityCls;
       const statusWord = sqId==="free" ? "" : hits[i] ? " — hit ✓" : " — not hit yet";
-      return `<div class="${cls}" data-sq="${i}" title="${meta.detail}${statusWord}"><div class="bingo-cell-icon">${meta.icon}</div>${meta.text}</div>`;
+      const catTag = sqId!=="free" && meta.cat ? `<div class="bingo-cat-tag">${meta.cat}</div>` : "";
+      return `<div class="${cls}" data-sq="${i}" title="${meta.detail}${statusWord}"><div class="bingo-cell-icon">${meta.icon}</div>${meta.text}${catTag}</div>`;
     }).join("")}</div>
     ${bingoCount>0?`<div class="bingo-banner">BINGO${bingoCount>1?` ×${bingoCount}`:""}! 🎉</div>`:""}
   `;
@@ -1897,7 +1961,8 @@ async function renderBingoCard(){
       const sqId = card[i];
       const meta = BINGO_SQUARE_META[sqId]||{text:sqId,detail:""};
       const statusWord = sqId==="free" ? "always counts" : hits[i] ? "hit ✓" : "not hit yet";
-      showToast(`${meta.text}: ${meta.detail} (${statusWord})`, 4000);
+      const rarityWord = meta.rarity && meta.rarity!=="common" ? ` [${meta.rarity.toUpperCase()}]` : "";
+      showToast(`${meta.text}${rarityWord}: ${meta.detail} (${statusWord})`, 4000);
     });
   });
 }
@@ -2830,6 +2895,7 @@ function openAdminPanel(tab){
       <button class="cap-gw-pill ${tab==='prize'?'on':''}" data-tab="prize">💰 Prize Setup</button>
       <button class="cap-gw-pill ${tab==='activity'?'on':''}" data-tab="activity">📊 Activity</button>
       <button class="cap-gw-pill ${tab==='features'?'on':''}" data-tab="features">🚀 Feature Control</button>
+      <button class="cap-gw-pill ${tab==='content'?'on':''}" data-tab="content">📰 Content Control</button>
     </div>
     <div id="admin-tab-body"></div>
   `);
@@ -2843,6 +2909,7 @@ function openAdminPanel(tab){
   else if(tab === "intro") renderAdminIntroTab();
   else if(tab === "activity") renderAdminActivityTab();
   else if(tab === "features") renderAdminFeatureControlTab();
+  else if(tab === "content") renderAdminContentControlTab();
   else renderAdminPrizeTab();
 }
 
@@ -3176,6 +3243,60 @@ function renderAdminFeatureControlTab(){
       safeRender(renderAutopsyCard, "renderAutopsyCard (override)");
       safeRender(renderTransferShamingCard, "renderTransferShamingCard (override)");
       safeRender(renderFixtures, "renderFixtures (override)", fixturesViewGw);
+    });
+  });
+}
+
+// ---------- Admin: Content Control — manual regeneration for the 4 AI features ----------
+// Autopsy, Press Conference, FPL Court and Micro Banter all normally write
+// themselves automatically once the sync decides the underlying data looks
+// finished enough. That heuristic can occasionally fire a little early (a
+// rearranged fixture, a sync gap, provisional bonus that later shifts) —
+// and Autopsy in particular, once generated for a gameweek, never
+// regenerates itself again on its own. This tab is the escape hatch: queue
+// a forced regeneration once you've confirmed on FPL's own site that the
+// numbers are actually final, and the next sync run (within ~15 minutes)
+// will rewrite that feature from scratch using whatever data is live then.
+const CONTENT_CONTROL_ITEMS = [
+  { key:"regenerateAutopsy",          title:"📰 The Autopsy",           collection:"autopsyReports" },
+  { key:"regeneratePressConference",  title:"🎤 Press Conference",      collection:"pressConference" },
+  { key:"regenerateFplCourt",         title:"⚖️ FPL Court",             collection:"fplCourt" },
+  { key:"regenerateMicroBanter",      title:"💬 Micro Banter",          collection:"microBanter" },
+];
+async function renderAdminContentControlTab(){
+  const body = document.getElementById("admin-tab-body");
+  body.innerHTML = `<div class="sub">Loading…</div>`;
+  const gw = GW_COUNT;
+  const [triggerSnap, ...docSnaps] = await Promise.all([
+    getDoc(doc(db, "adminConfig/manualContentTrigger")),
+    ...CONTENT_CONTROL_ITEMS.map(it => gw ? getDoc(doc(db, `${it.collection}/gw${gw}`)) : Promise.resolve(null)),
+  ]);
+  const trigger = triggerSnap.exists() ? triggerSnap.data() : {};
+  body.innerHTML = `
+    <p class="sub" style="margin-bottom:10px">These four features write themselves automatically once the sync thinks the gameweek's data looks done. If one of them fired off numbers that later turned out to be premature — check FPL's own site to confirm the real result first — queue a forced regeneration here. It applies on the <b>next sync run</b> (every 15 minutes), not instantly.</p>
+    ${!gw ? `<div class="sub">No gameweek synced yet.</div>` : CONTENT_CONTROL_ITEMS.map((it, i) => {
+      const d = docSnaps[i]?.exists() ? docSnaps[i].data() : null;
+      const pending = !!trigger[it.key];
+      const generatedAt = d?.generatedAt?.toDate ? d.generatedAt.toDate() : null;
+      const whenStr = generatedAt ? generatedAt.toLocaleString() : d ? "generated (time unknown)" : "not generated yet for this GW";
+      return `
+      <div class="club-upload-row">
+        <div style="flex:1;">
+          <div style="font-weight:600;font-size:12.5px;">${it.title} — GW${gw}</div>
+          <div class="sub" style="margin:0;">${whenStr}</div>
+          ${pending ? `<div class="sub" style="margin:2px 0 0;color:var(--accent2);">⏳ Queued — will regenerate on the next sync</div>` : ""}
+        </div>
+        <button class="upload-mini-btn content-regen-btn" data-key="${it.key}" ${pending?"disabled":""}>${pending ? "Queued" : "🔁 Regenerate now"}</button>
+      </div>`;
+    }).join("")}
+  `;
+  if(!gw) return;
+  document.querySelectorAll(".content-regen-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const key = btn.dataset.key;
+      await setDoc(doc(db, "adminConfig/manualContentTrigger"), { [key]: true, requestedAt: serverTimestamp() }, { merge: true });
+      showToast(`Queued — will regenerate within ~15 minutes on the next sync`);
+      renderAdminContentControlTab();
     });
   });
 }
