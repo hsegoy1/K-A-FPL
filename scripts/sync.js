@@ -37,11 +37,24 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 // catalog at https://openrouter.ai/api/v1/models. Verified live 2026-09-07.
 const OPENROUTER_MODEL_CHAIN = [
   "poolside/laguna-s-2.1:free",
-  "nvidia/nemotron-3.5-lightning:free",
-  "thinkingmachines/inkling-small:free",
   "inclusionai/ling-3.0-flash-sante:free",
   "liquid/lfm-2.5-2.6b:free",
+  "nvidia/nemotron-3.5-lightning:free",
+  "thinkingmachines/inkling-small:free",
 ];
+
+// Some free-tier models (notably reasoning-tuned ones — anything with
+// "thinking"/"reasoning"/"nemotron" in the name) dump their internal
+// chain-of-thought into message.content itself ("Here's a thinking
+// process: 1. Analyze the Request...") instead of just the final answer,
+// even when asked for plain text. `reasoning: { exclude: true }` tells
+// OpenRouter to strip reasoning tokens server-side for models that
+// support the split; this regex is the defense-in-depth check for models
+// that don't honor that and leak it into content anyway — reject that
+// response and fall through to the next model rather than publishing a
+// visible "thinking process" dump as the actual Autopsy/Press Conference text.
+const REASONING_LEAK_PATTERN = /thinking process|chain.of.thought|^here.s (a|my) (thinking|reasoning)|\*\*analyze the request\*\*|\*\*identify key elements\*\*/i;
+
 async function callOpenRouter(prompt, maxTokens = 600) {
   if (!OPENROUTER_API_KEY) {
     console.log("⚠️  OPENROUTER_API_KEY not set — skipping AI generation for this feature");
@@ -57,8 +70,12 @@ async function callOpenRouter(prompt, maxTokens = 600) {
         },
         body: JSON.stringify({
           model,
-          messages: [{ role: "user", content: prompt }],
+          messages: [{
+            role: "user",
+            content: `${prompt}\n\nIMPORTANT: Respond with ONLY the final requested text. Do not show your reasoning, thinking process, analysis, or any planning steps — no "here's my thinking", no numbered breakdown of the request, no meta-commentary about the task. Output nothing but the finished answer itself.`,
+          }],
           max_tokens: maxTokens,
+          reasoning: { exclude: true },
         }),
       });
       if (!res.ok) {
@@ -67,6 +84,10 @@ async function callOpenRouter(prompt, maxTokens = 600) {
       }
       const data = await res.json();
       const text = data.choices?.[0]?.message?.content?.trim();
+      if (text && REASONING_LEAK_PATTERN.test(text)) {
+        console.log(`⚠️  OpenRouter (${model}) leaked its reasoning trace into the output — rejecting and trying next model in the chain`);
+        continue;
+      }
       if (text) return text;
       console.log(`⚠️  OpenRouter (${model}) returned no content — trying next model in the chain`);
     } catch (err) {
