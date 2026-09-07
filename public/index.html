@@ -251,6 +251,25 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .court-vote .guilty{background:rgba(255,77,109,.1);border-color:rgba(255,77,109,.4);color:var(--red);}
 .court-vote .innocent{background:rgba(57,255,136,.1);border-color:rgba(57,255,136,.4);color:var(--green);}
 .court-result{text-align:center;font-family:var(--font-m);font-size:13px;font-weight:700;margin-top:10px;}
+.court-tally{margin-top:12px;}
+.court-tally-bar{display:flex;height:8px;border-radius:6px;overflow:hidden;background:var(--line);}
+.court-tally-bar .g{background:var(--red);}
+.court-tally-bar .n{background:var(--green);}
+.court-tally-labels{display:flex;justify-content:space-between;font-family:var(--font-m);font-size:10px;color:var(--muted);margin-top:4px;}
+.court-verdict{text-align:center;font-family:var(--font-m);font-weight:700;font-size:12px;margin-top:10px;padding:7px;border-radius:8px;}
+.court-verdict.guilty{background:rgba(255,77,109,.12);color:var(--red);}
+.court-verdict.innocent{background:rgba(57,255,136,.12);color:var(--green);}
+.court-verdict.hung{background:rgba(255,255,255,.06);color:var(--muted);}
+.court-archive-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);cursor:pointer;}
+.court-archive-row:last-child{border-bottom:none;}
+.court-archive-row .cgw{width:36px;font-family:var(--font-m);color:var(--muted);flex-shrink:0;font-size:11px;}
+.court-archive-row .cdef{flex:1;min-width:0;}
+.court-archive-row .cdef .t{font-weight:700;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.court-archive-row .cdef .crime{font-size:10.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.court-archive-row .cverdict{font-family:var(--font-m);font-size:10px;font-weight:700;flex-shrink:0;padding:4px 9px;border-radius:20px;white-space:nowrap;}
+.court-archive-row .cverdict.guilty{background:rgba(255,77,109,.12);color:var(--red);}
+.court-archive-row .cverdict.innocent{background:rgba(57,255,136,.12);color:var(--green);}
+.court-archive-row .cverdict.hung{background:rgba(255,255,255,.06);color:var(--muted);}
 .diffdanger-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12px;}
 .diffdanger-row:last-child{border-bottom:none;}
 .diffdanger-row .dplayer{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -1127,6 +1146,15 @@ button:active{ transform: translateY(1px) scale(.97); }
       <div class="kpi-card" id="court-card">
         <h3>This week's tribunal</h3>
         <div id="court-display"></div>
+      </div>
+    </div>
+
+    <div class="insight-block">
+      <div class="section-title"><span class="bar"></span>GW Guilty</div>
+      <div class="kpi-card" id="court-archive-card">
+        <h3>Past verdicts, gameweek by gameweek</h3>
+        <div class="sub">Tap a gameweek to read the full case and see how the jury ruled.</div>
+        <div id="court-archive-display"></div>
       </div>
     </div>
 
@@ -2113,6 +2141,26 @@ async function renderGotAway(){
 }
 
 // ---------- FPL Court ----------
+// Jury verdict: majority of guilty/innocent votes cast so far. "Hung Jury"
+// covers both a tie and (via total===0, checked by the caller) no votes.
+function courtVerdict(votes){
+  const g=votes?.guilty||0, n=votes?.innocent||0, total=g+n;
+  if(total===0||g===n) return { label: total===0?"No votes yet":"Hung Jury", cls:"hung", g, n, total };
+  return g>n
+    ? { label:"Jury Verdict: GUILTY", cls:"guilty", g, n, total }
+    : { label:"Jury Verdict: NOT GUILTY", cls:"innocent", g, n, total };
+}
+function renderCourtTally(votes){
+  const v=courtVerdict(votes);
+  if(v.total===0) return `<div class="court-verdict hung">⚖️ No votes cast yet — be the first juror</div>`;
+  const gPct=Math.round((v.g/v.total)*100), nPct=100-gPct;
+  return `
+    <div class="court-tally">
+      <div class="court-tally-bar"><div class="g" style="width:${gPct}%"></div><div class="n" style="width:${nPct}%"></div></div>
+      <div class="court-tally-labels"><span>🔴 ${v.g} Guilty (${gPct}%)</span><span>${v.n} Not Guilty (${nPct}%) 🟢</span></div>
+    </div>
+    <div class="court-verdict ${v.cls}">⚖️ ${v.label}</div>`;
+}
 async function renderFplCourt(){
   const el=document.getElementById("court-display");
   document.getElementById("court-new-badge").innerHTML=newBadgeHtml('fplCourt');
@@ -2144,17 +2192,72 @@ async function renderFplCourt(){
           <button class="guilty" data-v="guilty">🔴 Guilty</button>
           <button class="innocent" data-v="innocent">🟢 Not Guilty</button>
         </div>`:''}
+    ${renderCourtTally(d.votes)}
   `;
   if(me && !myVote){
     el.querySelectorAll(".court-vote button").forEach(btn=>{
       btn.addEventListener("click",async()=>{
         const v=btn.dataset.v;
-        localStorage.setItem(`court_vote_gw${GW_COUNT}_${me.id}`,v);
-        await setDoc(doc(db,`fplCourt/gw${GW_COUNT}`),{ [`votes.${v}`]: increment(1) },{ merge:true });
+        el.querySelectorAll(".court-vote button").forEach(b=>b.disabled=true);
+        try{
+          await setDoc(doc(db,`fplCourt/gw${GW_COUNT}`),{ [`votes.${v}`]: increment(1) },{ merge:true });
+          localStorage.setItem(`court_vote_gw${GW_COUNT}_${me.id}`,v);
+        }catch(err){
+          console.error("FPL Court vote failed to save:",err);
+        }
         renderFplCourt();
       });
     });
   }
+}
+
+// ---------- GW Guilty (FPL Court verdict archive) ----------
+let courtArchiveCache = {}; // gw -> case doc, for the click-to-detail handler below
+async function renderCourtArchive(){
+  const el=document.getElementById("court-archive-display");
+  if(!el) return;
+  if(!featureUnlocked('fplCourt')||!GW_COUNT){ el.innerHTML=""; return; }
+  const gws=Array.from({length:GW_COUNT},(_,i)=>i+1);
+  const snaps=await Promise.all(gws.map(gw=>getDoc(doc(db,`fplCourt/gw${gw}`))));
+  const cases=snaps.map((s,i)=>s.exists()?{gw:gws[i],...s.data()}:null).filter(Boolean).sort((a,b)=>b.gw-a.gw);
+  if(!cases.length){ el.innerHTML=`<div class="sub">No verdicts yet — check back once FPL Court starts convening.</div>`; return; }
+  courtArchiveCache={};
+  cases.forEach(c=>{ courtArchiveCache[c.gw]=c; });
+  el.innerHTML=cases.map(c=>{
+    const v=courtVerdict(c.votes);
+    const vLabel=v.total===0?"No votes":v.cls==="hung"?"Hung Jury":v.cls==="guilty"?"Guilty":"Not Guilty";
+    return `
+    <div class="court-archive-row" data-gw="${c.gw}">
+      <div class="cgw">GW${c.gw}</div>
+      <div class="cdef">
+        <div class="t">${escapeHtml(c.defendant?.teamName||"")}</div>
+        <div class="crime">${escapeHtml(c.defendant?.crime||"")}</div>
+      </div>
+      <div class="cverdict ${v.cls}">${vLabel}</div>
+    </div>`;
+  }).join("");
+  el.querySelectorAll(".court-archive-row").forEach(row=>{
+    row.addEventListener("click",()=>{
+      const c=courtArchiveCache[row.dataset.gw];
+      if(!c) return;
+      openSheet(`
+        <div class="squad-header"><div style="font-size:22px">⚖️</div><div><h2>GW${c.gw} Tribunal</h2><p>Defendant: ${escapeHtml(c.defendant?.teamName||"")}</p></div></div>
+        <div class="court-defendant">
+          <div class="cname">⚖️ Defendant: ${escapeHtml(c.defendant?.teamName||"")}</div>
+          <div class="ccrime">${escapeHtml(c.defendant?.crime||"")}</div>
+        </div>
+        <div class="court-section">
+          <div class="ctitle">🔴 Prosecution</div>
+          <div class="ctext">${escapeHtml(c.prosecution||"")}</div>
+        </div>
+        <div class="court-section">
+          <div class="ctitle">🟢 Defence</div>
+          <div class="ctext">${escapeHtml(c.defence||"")}</div>
+        </div>
+        ${renderCourtTally(c.votes)}
+      `);
+    });
+  });
 }
 
 // ---------- Differential Danger (GW6) ----------
@@ -4838,6 +4941,7 @@ async function boot(){
   safeRender(renderFplIQ, "renderFplIQ");
   safeRender(renderGotAway, "renderGotAway");
   safeRender(renderFplCourt, "renderFplCourt");
+  safeRender(renderCourtArchive, "renderCourtArchive");
   safeRender(renderDeathPlayer, "renderDeathPlayer");
   safeRender(renderActualVsPerfect, "renderActualVsPerfect");
   safeRender(renderOwnershipBattleground, "renderOwnershipBattleground");
@@ -4918,6 +5022,7 @@ async function boot(){
       safeRender(renderFplIQ, "renderFplIQ (live refresh)");
       safeRender(renderGotAway, "renderGotAway (live refresh)");
       safeRender(renderFplCourt, "renderFplCourt (live refresh)");
+      safeRender(renderCourtArchive, "renderCourtArchive (live refresh)");
       safeRender(renderDeathPlayer, "renderDeathPlayer (live refresh)");
       safeRender(renderActualVsPerfect, "renderActualVsPerfect (live refresh)");
       safeRender(renderOwnershipBattleground, "renderOwnershipBattleground (live refresh)");
