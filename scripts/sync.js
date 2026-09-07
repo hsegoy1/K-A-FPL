@@ -497,6 +497,93 @@ async function main() {
     }
   }
 
+  // 3b-2. Self-heal past squad snapshots once a gameweek goes final ---------
+  //
+  // The block above (`managers/{entryId}/gwSquads/gw{gw}`) writes each
+  // manager's per-player points using whatever the FPL live endpoint says
+  // AT THIS EXACT SYNC TICK — and it only ever runs for whichever gw is
+  // CURRENT right now. The moment a gameweek stops being current, nothing
+  // ever revisits its stored squad doc again — same shape as the old Dream
+  // Team bug, but worse in one way: bonus points are routinely PROVISIONAL
+  // for hours (sometimes longer, if a sync gap or a rearranged fixture is
+  // involved) before FPL confirms them. If the very last tick that ran
+  // while a gameweek was still current landed before that confirmation, the
+  // gap between provisional and final bonus gets frozen into the stored
+  // squad forever — the exact bug reported live: a manager's Squad/Compare
+  // pitch view summing to well more than the season-history total shown
+  // right next to it (that total comes from FPL's own per-gameweek history
+  // endpoint, refetched fresh every single sync regardless of which gw is
+  // current, so it's always correct — the frozen per-player snapshot
+  // wasn't). This also silently corrupts Captaincy Alpha and the Chip
+  // Timeline for that gameweek, since both read their historical numbers
+  // from these same stored squad docs.
+  //
+  // Fix: once a gameweek is fully final (finished + bonus officially
+  // confirmed), re-fetch every manager's picks for that gw plus its live
+  // scores ONE more time, correct the stored snapshot, and mark it final in
+  // a tiny tracking doc so it's never touched again — same one-time-
+  // correction shape as every other accumulator in this file. Bounded cost
+  // in STEADY STATE: normally at most one not-yet-finalized past gameweek
+  // exists, so this is ~35 extra FPL API calls once, not on every tick.
+  //
+  // The one time that's NOT true is the very first sync after this fix
+  // ships — every already-finished gameweek this season is unfinalized at
+  // once, and doing all of them in a single run could be a lot of FPL API
+  // calls back to back. So: only correct the OLDEST unfinalized one per
+  // sync tick. That naturally spreads a big initial catch-up across
+  // several 15-minute ticks instead of one burst, and costs nothing extra
+  // once caught up (steady state is 0-1 candidates anyway, so this cap
+  // never even engages after the first day or so).
+  const unfinalizedCandidates = events.filter((e) => e.id !== gw && e.finished && e.data_checked);
+  for (const e of unfinalizedCandidates.sort((a, b) => a.id - b.id)) {
+    const finalMarkerRef = db.doc(`gwSquadsFinal/gw${e.id}`);
+    const finalMarker = await finalMarkerRef.get();
+    if (finalMarker.exists) continue; // already corrected once — never re-touch, keeps this cheap
+    console.log(`GW${e.id} is now final — re-syncing stored squad snapshots to lock in confirmed bonus points...`);
+    let finalLive = null;
+    try {
+      const liveFinal = await getJson(`${FPL_BASE}/event/${e.id}/live/`);
+      finalLive = {};
+      liveFinal.elements.forEach((el) => { finalLive[el.id] = el.stats.total_points; });
+    } catch (err) {
+      console.log(`GW${e.id} finalize: live fetch failed (${err.message}) — will retry next sync`);
+      break; // one attempt per tick — try again next time, don't fall through to another gw this same run
+    }
+    let okCount = 0;
+    for (const fm of managers) {
+      const fEntryId = fm.entry;
+      try {
+        const fPicks = await getJson(`${FPL_BASE}/entry/${fEntryId}/event/${e.id}/picks/`);
+        if (!fPicks?.picks) continue;
+        const withFinalPoints = (p) => ({
+          element: p.element,
+          pts: finalLive[p.element] ?? 0,
+          multiplier: p.multiplier ?? 1,
+          isCaptain: (p.multiplier ?? 1) >= 2,
+        });
+        await db.doc(`managers/${fEntryId}/gwSquads/gw${e.id}`).set({
+          gw: e.id,
+          captain: fPicks.picks.find((p) => (p.multiplier ?? 1) >= 2)?.element || fPicks.picks.find((p) => p.is_captain)?.element || null,
+          viceCaptain: fPicks.picks.find((p) => p.is_vice_captain)?.element || null,
+          chip: fPicks.active_chip || null,
+          starting: fPicks.picks.filter((p) => p.position <= 11).map(withFinalPoints),
+          bench: fPicks.picks.filter((p) => p.position > 11).map(withFinalPoints),
+          isFinal: true,
+        });
+        okCount++;
+      } catch (err) {
+        console.log(`GW${e.id} finalize: entry ${fEntryId} picks fetch failed (${err.message})`);
+      }
+    }
+    if (okCount === managers.length) {
+      await finalMarkerRef.set({ gw: e.id, finalizedAt: admin.firestore.FieldValue.serverTimestamp(), managerCount: okCount });
+      console.log(`GW${e.id} squad snapshots finalized for all ${okCount} managers.`);
+    } else {
+      console.log(`GW${e.id} squad finalize: only ${okCount}/${managers.length} managers succeeded — not marked final yet, will retry the rest next sync.`);
+    }
+    break; // only one gameweek gets (re-)finalized per sync tick — see comment above
+  }
+
   // 3c. Write the league-wide compact rollup for this GW (one doc, not 30 reads)
   if (gw && Object.keys(gwSquadsRollup).length > 0) {
     await db.doc(`gameweekSquads/gw${gw}`).set({
@@ -630,42 +717,155 @@ async function main() {
     });
   }
 
-  // GW Bingo — compute which squares each manager hit this gameweek.  // The 24 non-free squares are defined once; each manager gets a
-  // deterministically shuffled card (seeded by entryId × gw so it's
-  // always the same card for that person, just different from their
-  // neighbours'). Ghost team scores read from the block computed above.
+  // GW Bingo — compute which squares each manager hit this gameweek.
+  //
+  // Redesigned from a single fixed 24-square list into a much bigger tagged
+  // pool (43 squares across 6 categories, 4 rarity tiers) that ROTATES: each
+  // gameweek a fresh 24-square subset is drawn (seeded by gw only, so it's
+  // the same active board for every manager that week — a real "this week's
+  // board" instead of the same 24 squares all season). Each manager's card
+  // is then that same weekly board laid out in their own personal shuffled
+  // order (seeded by entryId × gw, exactly as before), so no two people's
+  // grids look alike even though they're ticking the same squares.
+  //
+  // Fixed two real bugs found in the old fixed list while rebuilding this:
+  //   - `climb_5` / `top_3` read `r.prevRank`/`r.currentRank` off the raw
+  //     FPL standings objects using `.entryId`/`.currentRank`, fields that
+  //     don't exist there (the real fields are `.entry`/`.rank` — see the
+  //     `managers/{entryId}` write above). That lookup always returned
+  //     undefined, so both squares silently fell back to a hardcoded rank of
+  //     99 and `prevRank` was hardcoded `null` — neither could ever fire.
+  //     Now computed properly below (`currentRank` from the real standings
+  //     array, `prevRank` derived from cumulative total points as of last
+  //     gameweek — no extra Firestore reads needed, it's already sitting in
+  //     `managerHistoryMap`).
+  //   - `win_gw` and `top_scorer` were byte-for-byte the same check. Merged
+  //     into one square.
+  // Also folded the three near-identical Ghost Team squares (algorithm/
+  // robot/madman "beats you") into two squares that actually mean something
+  // — beating (or being swept by) all three machines at once, rather than
+  // three squares that amount to the same "did I have a bad week" question
+  // asked thrice.
   const ghostSnap = await db.doc(`ghostTeams/gw${gw}`).get();
   const ghostData = ghostSnap.exists ? ghostSnap.data() : null;
   const gwWinnerPoints = gwWinner?.gwPoints || 0;
 
-  const BINGO_SQUARES = [
-    { id:"captain_blank",    check:(r,sq) => { const cap = sq.starting.find(id=>id===r.capElement); return cap && (livePointsByElement[cap]||0) < 4; } },
-    { id:"haul_15",          check:(r,sq) => sq.starting.some(id=>(livePointsByElement[id]||0)>=15) },
-    { id:"bench_beats",      check:(r)    => r.benchPoints > r.gwPoints - r.benchPoints },
-    { id:"hit_scores",       check:(r,sq) => r.transferCost>0 && sq.starting.some(id=>(livePointsByElement[id]||0)>=8) },
-    { id:"win_gw",           check:(r)    => r.gwPoints===gwWinnerPoints && gwWinnerPoints>0 },
-    { id:"no_transfers",     check:(r)    => r.transfers===0 },
-    { id:"under_avg",        check:(r)    => r.gwPoints < avgPoints - 2 },
-    { id:"diff_scores",      check:(r,sq) => sq.starting.some(id=>{ const oc=ownershipCount[id]||0; return oc<=2 && (livePointsByElement[id]||0)>=10; }) },
-    { id:"best_on_bench",    check:(r,sq) => { const benchMax=sq.bench.reduce((m,id)=>Math.max(m,livePointsByElement[id]||0),0); const startMin=sq.starting.reduce((m,id)=>Math.min(m,livePointsByElement[id]||0),99); return benchMax>startMin; } },
-    { id:"chip_played",      check:(r)    => !!r.chip },
-    { id:"algorithm_beats",  check:(r)    => ghostData && r.gwPoints<(ghostData.algorithm?.points||0) },
-    { id:"robot_beats",      check:(r)    => ghostData && r.gwPoints<(ghostData.robot?.points||0) },
-    { id:"madman_beats",     check:(r)    => ghostData && r.gwPoints<(ghostData.madman?.points||0) },
-    { id:"top_scorer",       check:(r)    => r.gwPoints===gwWinnerPoints && gwWinnerPoints>0 },
-    { id:"under_30",         check:(r)    => r.gwPoints<30 },
-    { id:"hattrick",         check:(r,sq) => sq.starting.some(id=>(liveStatsByElement[id]?.goals||0)>=3) },
-    { id:"triple_captain",   check:(r)    => r.chip==="3xc" },
-    { id:"big_hit",          check:(r)    => r.transferCost>=8 },
-    { id:"clean_sheet",      check:(r,sq) => sq.starting.some(id=>{ const p=players.get(id); return p&&[1,2].includes(p.element_type)&&(liveStatsByElement[id]?.cleanSheet||0)>0; }) },
-    { id:"on_avg",           check:(r)    => Math.abs(r.gwPoints-avgPoints)<=1 },
-    { id:"captain_wins",     check:(r,sq) => { const capPts=(livePointsByElement[r.capElement]||0)*2; return gwResults.filter(x=>x.entryId!==r.entryId).every(x=>{ const xCap=gwSquadsRollup[x.entryId]?.captain; return capPts>=(livePointsByElement[xCap]||0)*2; }); } },
-    { id:"climb_5",          check:(r)    => { const prev=r.prevRank; return prev&&r.currentRank&&(prev-r.currentRank)>=5; } },
-    { id:"top_3",            check:(r)    => r.currentRank<=3 },
-    { id:"score_over_70",    check:(r)    => r.gwPoints>=70 },
+  // Previous-gameweek LEAGUE rank (this office league's table position, not
+  // FPL's global rank) — derived from cumulative total points as of gw-1
+  // rather than a stored snapshot, so it's always consistent with whatever
+  // the table actually looked like and costs zero extra reads.
+  const prevRankByEntry = {};
+  if (gw > 1) {
+    managers
+      .map((m) => {
+        const h = managerHistoryMap[m.entry]?.fullHistory.find((x) => x.gw === gw - 1);
+        return h ? { entryId: m.entry, totalPoints: h.totalPoints } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.totalPoints - a.totalPoints)
+      .forEach((x, i) => { prevRankByEntry[x.entryId] = i + 1; });
+  }
+  const currentRankByEntry = {};
+  managers.forEach((m) => { currentRankByEntry[m.entry] = m.rank; });
+
+  // Effective captain points (raw + multiplied), computed once per manager
+  // from the actual picks data — correctly follows FPL's own vice-captain
+  // takeover and triple-captain multiplier, instead of the old code's
+  // hardcoded "×2 for whoever's marked captain" assumption.
+  const effectiveCapPointsByEntry = {};
+  const capRawPointsByEntry = {};
+  gwResults.forEach((r) => {
+    const full = gwSquadFullByEntry[r.entryId];
+    const capPick = full ? [...full.starting, ...full.bench].find((p) => p.isCaptain) : null;
+    effectiveCapPointsByEntry[r.entryId] = capPick ? capPick.pts * capPick.multiplier : 0;
+    capRawPointsByEntry[r.entryId] = capPick ? capPick.pts : 0;
+  });
+  const maxEffectiveCapPoints = Math.max(0, ...Object.values(effectiveCapPointsByEntry));
+  const topPlayerScoreThisGw = Math.max(0, ...Object.values(livePointsByElement));
+
+  // Which player got captained the most across the league this week (by
+  // element id, not name — the old "most captained" tallies elsewhere in
+  // this file key by name, which isn't usable for a per-player points check).
+  const captainElementCounts = {};
+  Object.values(gwSquadsRollup).forEach((entry) => {
+    if (entry.captain) captainElementCounts[entry.captain] = (captainElementCounts[entry.captain] || 0) + 1;
+  });
+  const mostCaptainedIdEntry = Object.entries(captainElementCounts).sort((a, b) => b[1] - a[1])[0];
+  const mostCaptainedElementId = mostCaptainedIdEntry ? parseInt(mostCaptainedIdEntry[0]) : null;
+
+  const gwPointsByEntry = {};
+  gwResults.forEach((r) => { gwPointsByEntry[r.entryId] = r.gwPoints; });
+  const rankSortedManagers = [...managers].sort((a, b) => a.rank - b.rank);
+  const rankIndexByEntry = {};
+  rankSortedManagers.forEach((m, i) => { rankIndexByEntry[m.entry] = i; });
+  const leagueLeaderEntry = rankSortedManagers[0]?.entry ?? null;
+  const scoreFrequency = {};
+  gwResults.forEach((r) => { scoreFrequency[r.gwPoints] = (scoreFrequency[r.gwPoints] || 0) + 1; });
+
+  // The full pool. `check(r, sq, full)` — r = augmented gwResults row, sq =
+  // gwSquadsRollup entry (element ids only), full = gwSquadFullByEntry entry
+  // (points + transfer detail, when available). `rarity` drives both the
+  // weekly draw weighting below and the frontend's glow/badge styling;
+  // `cat` is display-only grouping.
+  const BINGO_SQUARE_POOL = [
+    // — Captaincy —
+    { id:"captain_blank",       cat:"captaincy", rarity:"common",    check:(r,sq) => { const cap=sq.starting.find(id=>id===r.capElement); return cap && (livePointsByElement[cap]||0) < 4; } },
+    { id:"captain_wins",        cat:"captaincy", rarity:"rare",      check:(r)    => maxEffectiveCapPoints>0 && effectiveCapPointsByEntry[r.entryId]===maxEffectiveCapPoints },
+    { id:"differential_captain",cat:"captaincy", rarity:"rare",      check:(r)    => (ownershipCount[r.capElement]||0)<=3 && (livePointsByElement[r.capElement]||0)>=8 },
+    { id:"template_captain_blank",cat:"captaincy",rarity:"uncommon", check:(r)    => mostCaptainedElementId!=null && r.capElement===mostCaptainedElementId && (livePointsByElement[r.capElement]||0)<4 },
+    { id:"captain_top_scorer",  cat:"captaincy", rarity:"legendary", check:(r)    => topPlayerScoreThisGw>0 && capRawPointsByEntry[r.entryId]===topPlayerScoreThisGw },
+    // — Transfers —
+    { id:"hit_scores",          cat:"transfers", rarity:"common",    check:(r,sq) => r.transferCost>0 && sq.starting.some(id=>(livePointsByElement[id]||0)>=8) },
+    { id:"no_transfers",        cat:"transfers", rarity:"common",    check:(r)    => r.transfers===0 },
+    { id:"big_hit",             cat:"transfers", rarity:"uncommon",  check:(r)    => r.transferCost>=8 },
+    { id:"transfer_masterstroke",cat:"transfers",rarity:"rare",      check:(r,sq,full) => !!full && full.transfersIn.some((t,i)=>{ const outEl=full.transfersOut[i]?.element; return outEl!=null && (livePointsByElement[t.element]||0)-(livePointsByElement[outEl]||0)>=10; }) },
+    { id:"transfer_flop",       cat:"transfers", rarity:"uncommon",  check:(r,sq,full) => !!full && full.transfersIn.some((t,i)=>{ const outEl=full.transfersOut[i]?.element; return outEl!=null && (livePointsByElement[outEl]||0)-(livePointsByElement[t.element]||0)>=6; }) },
+    { id:"panic_swap",          cat:"transfers", rarity:"common",    check:(r)    => r.transfers>=3 },
+    // — Bench —
+    { id:"bench_beats",         cat:"bench",     rarity:"rare",      check:(r)    => r.benchPoints > r.gwPoints - r.benchPoints },
+    { id:"best_on_bench",       cat:"bench",     rarity:"common",    check:(r,sq) => { const benchMax=sq.bench.reduce((m,id)=>Math.max(m,livePointsByElement[id]||0),0); const startMin=sq.starting.reduce((m,id)=>Math.min(m,livePointsByElement[id]||0),99); return benchMax>startMin; } },
+    { id:"costly_bench",        cat:"bench",     rarity:"uncommon",  check:(r,sq) => sq.bench.some(id=>(livePointsByElement[id]||0)>=12) },
+    { id:"bench_fodder",        cat:"bench",     rarity:"common",    check:(r,sq) => sq.bench.length>0 && sq.bench.every(id=>(livePointsByElement[id]||0)===0) },
+    // — Performance —
+    { id:"under_avg",           cat:"performance", rarity:"common",  check:(r)    => r.gwPoints < avgPoints - 2 },
+    { id:"on_avg",              cat:"performance", rarity:"uncommon",check:(r)    => Math.abs(r.gwPoints-avgPoints)<=1 },
+    { id:"under_30",            cat:"performance", rarity:"common",  check:(r)    => r.gwPoints<30 },
+    { id:"score_over_70",       cat:"performance", rarity:"rare",    check:(r)    => r.gwPoints>=70 },
+    { id:"haul_15",             cat:"performance", rarity:"uncommon",check:(r,sq) => sq.starting.some(id=>(livePointsByElement[id]||0)>=15) },
+    { id:"season_low",          cat:"performance", rarity:"rare",    check:(r)    => { const past=(managerHistoryMap[r.entryId]?.fullHistory||[]).filter(h=>h.gw<gw); return past.length>0 && r.gwPoints<=Math.min(...past.map(h=>h.points)); } },
+    { id:"season_high",         cat:"performance", rarity:"rare",    check:(r)    => { const past=(managerHistoryMap[r.entryId]?.fullHistory||[]).filter(h=>h.gw<gw); return past.length>0 && r.gwPoints>=Math.max(...past.map(h=>h.points)); } },
+    { id:"nailed_it",           cat:"performance", rarity:"uncommon",check:(r,sq) => sq.starting.length===11 && sq.starting.every(id=>(liveStatsByElement[id]?.minutes||0)>=60) },
+    // — Chips —
+    { id:"chip_played",         cat:"chips",     rarity:"common",    check:(r)    => !!r.chip },
+    { id:"triple_captain",      cat:"chips",     rarity:"uncommon",  check:(r)    => r.chip==="3xc" },
+    { id:"chip_backfire",       cat:"chips",     rarity:"rare",      check:(r)    => !!r.chip && r.gwPoints<avgPoints },
+    // — Chaos / rivalry —
+    { id:"beat_the_bots",       cat:"chaos",     rarity:"rare",      check:(r)    => !!ghostData && r.gwPoints>(ghostData.algorithm?.points||0) && r.gwPoints>(ghostData.robot?.points||0) && r.gwPoints>(ghostData.madman?.points||0) },
+    { id:"swept_by_bots",       cat:"chaos",     rarity:"legendary", check:(r)    => !!ghostData && r.gwPoints<(ghostData.algorithm?.points||0) && r.gwPoints<(ghostData.robot?.points||0) && r.gwPoints<(ghostData.madman?.points||0) },
+    { id:"climb_5",             cat:"chaos",     rarity:"rare",      check:(r)    => { const prev=prevRankByEntry[r.entryId]; const cur=currentRankByEntry[r.entryId]; return prev!=null && cur!=null && (prev-cur)>=5; } },
+    { id:"free_fall",           cat:"chaos",     rarity:"rare",      check:(r)    => { const prev=prevRankByEntry[r.entryId]; const cur=currentRankByEntry[r.entryId]; return prev!=null && cur!=null && (cur-prev)>=5; } },
+    { id:"top_3",               cat:"chaos",     rarity:"legendary", check:(r)    => (currentRankByEntry[r.entryId]||99)<=3 },
+    { id:"beat_the_leader",     cat:"chaos",     rarity:"uncommon",  check:(r)    => leagueLeaderEntry!=null && r.entryId!==leagueLeaderEntry && r.gwPoints>(gwPointsByEntry[leagueLeaderEntry]??-1) },
+    { id:"closest_call",        cat:"chaos",     rarity:"common",    check:(r)    => { const idx=rankIndexByEntry[r.entryId]; if(idx==null) return false; const neighbours=[rankSortedManagers[idx-1],rankSortedManagers[idx+1]].filter(Boolean); return neighbours.some(n=>{ const p=gwPointsByEntry[n.entry]; return p!=null && Math.abs(p-r.gwPoints)<=1; }); } },
+    { id:"score_twin",          cat:"chaos",     rarity:"common",    check:(r)    => (scoreFrequency[r.gwPoints]||0)>=2 },
+    { id:"diff_scores",         cat:"chaos",     rarity:"uncommon",  check:(r,sq) => sq.starting.some(id=>{ const oc=ownershipCount[id]||0; return oc<=2 && (livePointsByElement[id]||0)>=10; }) },
+    // — Match stats / milestones —
+    { id:"hattrick",            cat:"milestones",rarity:"rare",      check:(r,sq) => sq.starting.some(id=>(liveStatsByElement[id]?.goals||0)>=3) },
+    { id:"clean_sheet",         cat:"milestones",rarity:"common",    check:(r,sq) => sq.starting.some(id=>{ const p=players.get(id); return p&&[1,2].includes(p.element_type)&&(liveStatsByElement[id]?.cleanSheet||0)>0; }) },
+    { id:"clean_sheet_duo",     cat:"milestones",rarity:"uncommon",  check:(r,sq) => sq.starting.filter(id=>{ const p=players.get(id); return p&&[1,2].includes(p.element_type)&&(liveStatsByElement[id]?.cleanSheet||0)>0; }).length>=2 },
+    { id:"assist_party",        cat:"milestones",rarity:"uncommon",  check:(r,sq) => sq.starting.some(id=>(liveStatsByElement[id]?.assists||0)>=2) },
+    { id:"red_card_ruin",       cat:"milestones",rarity:"rare",      check:(r,sq) => sq.starting.some(id=>(liveStatsByElement[id]?.redCards||0)>=1) },
+    { id:"penalty_pain",        cat:"milestones",rarity:"uncommon",  check:(r,sq) => sq.starting.some(id=>(liveStatsByElement[id]?.penMissed||0)>=1) },
+    { id:"bonus_magnet",        cat:"milestones",rarity:"common",    check:(r,sq) => sq.starting.some(id=>(liveStatsByElement[id]?.bonus||0)>=3) },
+    { id:"own_goal_oops",       cat:"milestones",rarity:"legendary", check:(r,sq) => sq.starting.some(id=>(liveStatsByElement[id]?.ownGoals||0)>=1) },
   ];
 
-  // Seeded shuffle: consistent card for the same manager+GW, different from others
+  // Seeded shuffle (LCG) — same generator used for two different jobs below:
+  // picking which 24 squares are "in the pool" this gameweek (seeded by gw
+  // only, so it's identical for every manager that week), and laying out
+  // each manager's own card (seeded by entryId × gw, so it's the same card
+  // for that person every time you look, but different from their
+  // neighbours').
   function seededShuffle(arr, seed) {
     const a = [...arr];
     let s = seed;
@@ -677,6 +877,42 @@ async function main() {
     return a;
   }
 
+  // Weekly rotation: draw `size` squares out of the full pool, weighted so
+  // common squares show up most weeks and legendary ones feel like an event
+  // — but with a floor guaranteeing at least one legendary and two rares
+  // make the cut every single week, so the board always has *something*
+  // special in it even on an unlucky draw.
+  function pickWeeklyBingoPool(pool, seedBase, size) {
+    const RARITY_WEIGHT = { common: 10, uncommon: 6, rare: 3, legendary: 1 };
+    let s = seedBase;
+    const rand = () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return Math.abs(s) / 0xffffffff; };
+    const remaining = pool.map((sq) => ({ sq, w: RARITY_WEIGHT[sq.rarity] || 5 }));
+    const takeTier = (tier, count) => {
+      for (let i=0; i<count; i++) {
+        const idxs = remaining.map((x,i2)=>x.sq.rarity===tier?i2:-1).filter(i2=>i2>=0);
+        if (idxs.length===0) return;
+        const pick = idxs[Math.floor(rand()*idxs.length)];
+        picked.push(remaining[pick].sq);
+        remaining.splice(pick,1);
+      }
+    };
+    const picked = [];
+    takeTier("legendary", 1);
+    takeTier("rare", 2);
+    while (picked.length < size && remaining.length > 0) {
+      const totalW = remaining.reduce((sum,x)=>sum+x.w,0);
+      let roll = rand() * totalW;
+      let i = 0;
+      while (i < remaining.length-1 && roll > remaining[i].w) { roll -= remaining[i].w; i++; }
+      picked.push(remaining[i].sq);
+      remaining.splice(i,1);
+    }
+    return picked;
+  }
+
+  const weeklyBingoPool = pickWeeklyBingoPool(BINGO_SQUARE_POOL, gw * 104729 + 7, 24);
+  console.log(`GW Bingo weekly board (${weeklyBingoPool.length} squares): ${weeklyBingoPool.map(s=>s.id).join(", ")}`);
+
   const BINGO_LINES = [
     [0,1,2,3,4],[5,6,7,8,9],[10,11,12,13,14],[15,16,17,18,19],[20,21,22,23,24],
     [0,5,10,15,20],[1,6,11,16,21],[2,7,12,17,22],[3,8,13,18,23],[4,9,14,19,24],
@@ -687,15 +923,16 @@ async function main() {
   for (const r of gwResults) {
     const squad = gwSquadsRollup[r.entryId];
     if (!squad) continue;
-    const augmented = { ...r, capElement: squad.captain, currentRank: managers.find(m=>m.entryId===r.entryId)?.currentRank||99, prevRank: null };
+    const full = gwSquadFullByEntry[r.entryId] || null;
+    const augmented = { ...r, capElement: squad.captain, currentRank: currentRankByEntry[r.entryId]||99, prevRank: prevRankByEntry[r.entryId]||null };
     const seed = (r.entryId * 31 + gw * 997) | 0;
-    const shuffled = seededShuffle(BINGO_SQUARES, seed);
+    const shuffled = seededShuffle(weeklyBingoPool, seed);
     // Build 5×5: indices 0-11 are shuffled squares, 12 is FREE, 13-24 continue
     const card = [...shuffled.slice(0,12), null, ...shuffled.slice(12,24)];
     const hits = card.map((sq, i) => {
       if (i===12) return true; // FREE
       if (!sq) return false;
-      try { return !!sq.check(augmented, squad); } catch(e) { return false; }
+      try { return !!sq.check(augmented, squad, full); } catch(e) { return false; }
     });
     const bingoLines = BINGO_LINES.filter(line=>line.every(i=>hits[i])).length;
     bingoWrites.push(db.doc(`gwBingo/gw${gw}_${r.entryId}`).set({
@@ -737,6 +974,26 @@ async function main() {
   await computeManagerEvolutionSnapshot(managerHistoryMap, gw);
   await computeTransferHallOfShame(gwTransfersRollup, livePointsByElement, gw, isFinal);
 
+  // Manual override — lets the admin panel force an immediate regeneration
+  // of any of the four AI-written features, bypassing the normal "already
+  // generated for this matchday" dedupe (Autopsy, once written for a GW,
+  // otherwise NEVER regenerates — there was no escape hatch at all if it
+  // fired off data that later turned out to be premature or wrong, e.g.
+  // the squad-snapshot bug fixed above). The admin panel writes one of the
+  // `regenerate*` flags to `adminConfig/manualContentTrigger`; whichever
+  // ones actually succeed here get cleared below so they fire exactly once.
+  // One a flag fails to produce content (data not ready yet, AI call
+  // failed), it's deliberately left set so the very next sync — at most 15
+  // minutes later — retries automatically instead of silently dropping the
+  // admin's request.
+  const manualTriggerRef = db.doc("adminConfig/manualContentTrigger");
+  const manualTriggerSnap = await manualTriggerRef.get();
+  const manualTrigger = manualTriggerSnap.exists ? manualTriggerSnap.data() : {};
+  const forceAutopsy = !!manualTrigger.regenerateAutopsy;
+  const forceFplCourt = !!manualTrigger.regenerateFplCourt;
+  const forcePressConf = !!manualTrigger.regeneratePressConference;
+  const forceMicroBanter = !!manualTrigger.regenerateMicroBanter;
+
   // AI-generated gameweek recap ("The Autopsy") — fires on WHICHEVER comes
   // first: FPL's own official confirmation, or our own fixture-based
   // "safely done" check (all matches finished + a comfortable buffer for
@@ -744,17 +1001,28 @@ async function main() {
   // for days if FPL is just slow to flip data_checked, without ever
   // narrating a story off numbers that genuinely haven't finished yet.
   const gwSafelyDone = await checkGwSafelyDoneForAI(gw);
-  if (isFinal || gwSafelyDone) {
-    await generateAutopsyIfNeeded(gw, { gwWinner, gwLoser, biggestBench, mostHits, mostCaptained, avgPoints });
+  let autopsyDone = false, fplCourtDone = false, pressConfDone = false, microBanterDone = false;
+  if (isFinal || gwSafelyDone || forceAutopsy) {
+    autopsyDone = await generateAutopsyIfNeeded(gw, { gwWinner, gwLoser, biggestBench, mostHits, mostCaptained, avgPoints }, forceAutopsy);
   }
   // These check matchday readiness internally (see findLatestReadyMatchday),
   // so they're called every sync regardless of whole-GW isFinal status —
   // they update themselves once each matchday's games actually finish, not
   // just once at the very end of the gameweek (and not blocked by one
   // rearranged fixture still pending later in the week).
-  await generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints, playersMeta);
-  await generatePressConferenceIfNeeded(gw, gwResults, avgPoints);
-  await generateMicroBanterIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, playersMeta);
+  fplCourtDone = await generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints, playersMeta, forceFplCourt);
+  pressConfDone = await generatePressConferenceIfNeeded(gw, gwResults, avgPoints, forcePressConf);
+  microBanterDone = await generateMicroBanterIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, playersMeta, forceMicroBanter);
+
+  const consumed = {};
+  if (forceAutopsy && autopsyDone) consumed.regenerateAutopsy = false;
+  if (forceFplCourt && fplCourtDone) consumed.regenerateFplCourt = false;
+  if (forcePressConf && pressConfDone) consumed.regeneratePressConference = false;
+  if (forceMicroBanter && microBanterDone) consumed.regenerateMicroBanter = false;
+  if (Object.keys(consumed).length > 0) {
+    await manualTriggerRef.set({ ...consumed, lastConsumedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    console.log(`Manual content regeneration consumed: ${Object.keys(consumed).join(", ")}`);
+  }
 
   console.log(`Synced GW${gw}. Winner: ${gwWinner?.managerName} (${gwWinner?.gwPoints} pts)`);
 }
@@ -762,10 +1030,10 @@ async function main() {
 // Only generates once per gameweek — checks Firestore first so a finalized
 // GW's story never gets silently (and wastefully) regenerated on every
 // subsequent 15-minute sync run within that same gameweek.
-async function generateAutopsyIfNeeded(gw, stats) {
+async function generateAutopsyIfNeeded(gw, stats, forceRegen = false) {
   const ref = db.doc(`autopsyReports/gw${gw}`);
   const existing = await ref.get();
-  if (existing.exists) return;
+  if (existing.exists && !forceRegen) return false;
 
   const { gwWinner, gwLoser, biggestBench, mostHits, mostCaptained, avgPoints } = stats;
   const facts = [
@@ -789,14 +1057,15 @@ Facts:
   const text = await callOpenRouter(prompt, 500);
   if (!text) {
     console.log(`Autopsy GW${gw}: skipped — no AI response (check OPENROUTER_API_KEY is set correctly)`);
-    return;
+    return false;
   }
   await ref.set({
     text,
     gw,
     generatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
-  console.log(`Autopsy generated for GW${gw} (${text.length} chars)`);
+  console.log(`Autopsy ${existing.exists ? "regenerated" : "generated"} for GW${gw} (${text.length} chars)`);
+  return true;
 }
 
 // Actual vs Perfect's own accumulator, Lost Points' own accumulator, and
@@ -1363,14 +1632,14 @@ async function checkGwSafelyDoneForAI(gw) {
 
 // Micro Banter — 3-4 short, punchy one-liners about what just happened,
 // unlocks GW12. Same per-matchday update pattern as Press Conference/Court.
-async function generateMicroBanterIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, playersMeta) {
-  if (gw < 12) return;
+async function generateMicroBanterIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, playersMeta, forceRegen = false) {
+  if (gw < 12) return false;
   const ref = db.doc(`microBanter/gw${gw}`);
   const existing = await ref.get();
   const existingData = existing.exists ? existing.data() : null;
   const latestReady = await findLatestReadyMatchday(gw);
-  if (!latestReady) return;
-  if (existingData?.lastGeneratedForDate === latestReady) return;
+  if (!latestReady) return false;
+  if (!forceRegen && existingData?.lastGeneratedForDate === latestReady) return false;
   const byPoints = [...gwResults].sort((a,b)=>b.gwPoints-a.gwPoints);
   const winner = byPoints[0];
   const biggestBench = [...gwResults].sort((a,b)=>b.benchPoints-a.benchPoints)[0];
@@ -1383,36 +1652,37 @@ async function generateMicroBanterIfNeeded(gw, gwResults, gwSquadsRollup, livePo
     biggestBench && biggestBench.benchPoints > 8 ? `${biggestBench.teamName} left ${biggestBench.benchPoints} points on the bench` : null,
     captainBlank ? `${captainBlank.teamName}'s captain blanked` : null,
   ].filter(Boolean);
-  if (facts.length === 0) return;
+  if (facts.length === 0) return false;
   const prompt = `You are writing short, witty one-liner banter for "K&A Paid FPL", an office Fantasy Premier League mini-league. Based on these facts from Gameweek ${gw} so far, write ${facts.length} punchy, funny one-liners (one per fact, under 20 words each). Plain text, one liner per line, no numbering, no markdown.
 
 Facts:
 ${facts.map(f=>`- ${f}`).join('\n')}`;
   const text = await callOpenRouter(prompt, 250);
-  if (!text) return;
+  if (!text) return false;
   const lines = text.split('\n').map(l=>l.trim()).filter(Boolean).slice(0,4);
-  if (lines.length === 0) return;
+  if (lines.length === 0) return false;
   await ref.set({
     gw,
     lastGeneratedForDate: latestReady,
     lines,
     generatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
-  console.log(`Micro Banter generated for GW${gw}: ${lines.length} lines`);
+  console.log(`Micro Banter ${forceRegen ? "regenerated" : "generated"} for GW${gw}: ${lines.length} lines`);
+  return true;
 }
 
-async function generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints, playersMeta) {
-  if (gw < 10) return;
+async function generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints, playersMeta, forceRegen = false) {
+  if (gw < 10) return false;
   const ref = db.doc(`fplCourt/gw${gw}`);
   const existing = await ref.get();
   const existingData = existing.exists ? existing.data() : null;
   const latestReady = await findLatestReadyMatchday(gw);
-  if (!latestReady) return;
-  if (existingData?.lastGeneratedForDate === latestReady) return; // already reflects this matchday's results
+  if (!latestReady) return false;
+  if (!forceRegen && existingData?.lastGeneratedForDate === latestReady) return false; // already reflects this matchday's results
   // Find the defendant: manager with highest bench points (biggest waste)
   // — the most visually dramatic FPL crime, every single week
   const defendant = [...gwResults].sort((a,b)=>b.benchPoints-a.benchPoints)[0];
-  if (!defendant || defendant.benchPoints < 4) return;
+  if (!defendant || defendant.benchPoints < 4) return false;
   const squad = gwSquadsRollup[defendant.entryId];
   const bestBench = squad?.bench
     ?.map(id=>({ id, pts: livePointsByElement[id]||0 }))
@@ -1435,14 +1705,14 @@ ${facts.map(f=>`- ${f}`).join('\n')}
 
 Return ONLY a JSON object with keys "prosecution" and "defence". No markdown, no extra text.`;
   const text = await callOpenRouter(prompt, 400);
-  if (!text) return;
+  if (!text) return false;
   let parsed;
   try {
     const clean = text.replace(/```json|```/g,'').trim();
     parsed = JSON.parse(clean);
   } catch(e) {
     console.log(`FPL Court GW${gw}: AI returned non-JSON, skipping`);
-    return;
+    return false;
   }
   await ref.set({
     gw,
@@ -1450,10 +1720,11 @@ Return ONLY a JSON object with keys "prosecution" and "defence". No markdown, no
     defendant: { entryId: defendant.entryId, teamName: defendant.teamName, managerName: defendant.managerName, crime: `${defendant.benchPoints} bench points wasted` },
     prosecution: parsed.prosecution || "",
     defence: parsed.defence || "",
-    verdict: null, // set by frontend voting
+    verdict: existingData?.verdict ?? null, // preserve any votes already cast if this is a forced regeneration
     generatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
-  console.log(`FPL Court case generated for GW${gw} — defendant: ${defendant.teamName}`);
+  console.log(`FPL Court case ${forceRegen ? "regenerated" : "generated"} for GW${gw} — defendant: ${defendant.teamName}`);
+  return true;
 }
 
 // Lost Points Index — each GW, for each manager, finds bench players who
@@ -1502,18 +1773,18 @@ async function computeLostPoints(gwResults, gwSquadsRollup, livePointsByElement,
 // and loser, styled like a real football press conference. Updates once per
 // matchday as fixtures finish (Saturday night, Sunday night, etc), skipping
 // any day with no fixtures scheduled. Unlocks at GW7.
-async function generatePressConferenceIfNeeded(gw, gwResults, avgPoints) {
-  if (gw < 7) return;
+async function generatePressConferenceIfNeeded(gw, gwResults, avgPoints, forceRegen = false) {
+  if (gw < 7) return false;
   const ref = db.doc(`pressConference/gw${gw}`);
   const existing = await ref.get();
   const existingData = existing.exists ? existing.data() : null;
   const latestReady = await findLatestReadyMatchday(gw);
-  if (!latestReady) return;
-  if (existingData?.lastGeneratedForDate === latestReady) return;
+  if (!latestReady) return false;
+  if (!forceRegen && existingData?.lastGeneratedForDate === latestReady) return false;
   const byPoints = [...gwResults].sort((a, b) => b.gwPoints - a.gwPoints);
   const winner = byPoints[0];
   const loser = byPoints[byPoints.length - 1];
-  if (!winner || !loser) return;
+  if (!winner || !loser) return false;
   const prompt = `You are a fictional sports journalist covering "K&A Paid FPL", a 35-person office Fantasy Premier League mini-league. Write a funny, punchy post-match press conference for Gameweek ${gw}, based on results so far this gameweek.
 
 Include TWO separate interview segments:
@@ -1524,13 +1795,13 @@ Each segment: a journalist question, then the manager's answer (2-3 sentences). 
 
 Return ONLY a JSON object: { "winner": { "question": "...", "answer": "..." }, "loser": { "question": "...", "answer": "..." } }`;
   const text = await callOpenRouter(prompt, 450);
-  if (!text) return;
+  if (!text) return false;
   let parsed;
   try {
     parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
   } catch (e) {
     console.log(`Press Conference GW${gw}: AI returned non-JSON, skipping`);
-    return;
+    return false;
   }
   await ref.set({
     gw,
@@ -1539,7 +1810,8 @@ Return ONLY a JSON object: { "winner": { "question": "...", "answer": "..." }, "
     loser: { entryId: loser.entryId, teamName: loser.teamName, points: loser.gwPoints, ...parsed.loser },
     generatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
-  console.log(`Press Conference generated for GW${gw}`);
+  console.log(`Press Conference ${forceRegen ? "regenerated" : "generated"} for GW${gw}`);
+  return true;
 }
 
 // The Death Player — the single player league-wide who, if they haul,
