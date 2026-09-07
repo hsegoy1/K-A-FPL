@@ -371,20 +371,6 @@ async function main() {
     // there (which also just works correctly for every past, finished GW).
     // `value`/`bank` (team value and money in the bank, in 0.1m units) power
     // the "Smart Money" team-value-growth insight.
-    const liveEntry = picks?.entry_history
-      ? {
-          gw,
-          points: picks.entry_history.points,
-          totalPoints: picks.entry_history.total_points,
-          rank: picks.entry_history.rank,
-          overallRank: picks.entry_history.overall_rank,
-          benchPoints: picks.entry_history.points_on_bench,
-          transfers: picks.entry_history.event_transfers,
-          transferCost: picks.entry_history.event_transfers_cost,
-          value: picks.entry_history.value,
-          bank: picks.entry_history.bank,
-        }
-      : null;
     const confirmedHistory = history.current
       .filter((h) => h.event !== gw) // drop a stale/duplicate entry for the live GW if one exists
       .map((h) => ({
@@ -399,6 +385,42 @@ async function main() {
         value: h.value,
         bank: h.bank,
       }));
+    // Cross-check against the league standings endpoint's own cumulative
+    // total (`m.total`, already fetched above — no extra API call) before
+    // trusting the picks endpoint's `entry_history` numbers. Confirmed live
+    // against this exact league: the picks AND full-history endpoints
+    // agreed with EACH OTHER but sat well behind what the standings
+    // endpoint already showed for the same manager at the same moment —
+    // FPL's classic-league standings appears to update on a faster,
+    // separate path than the per-entry endpoints do while a gameweek is
+    // still being processed. Since a manager's true cumulative total can
+    // only go up during a live gameweek, taking the max of both sources
+    // can't overcount — it just stops a laggy per-entry response from
+    // holding the live score (and the whole table) below what the league's
+    // own standings already confirm.
+    const confirmedTotal = confirmedHistory.find((h) => h.gw === gw - 1)?.totalPoints || 0;
+    const standingsTotal = typeof m.total === "number" ? m.total : null;
+    const standingsDerivedGwPoints = standingsTotal !== null ? standingsTotal - confirmedTotal : null;
+    let liveEntry = picks?.entry_history
+      ? {
+          gw,
+          points: picks.entry_history.points,
+          totalPoints: picks.entry_history.total_points,
+          rank: picks.entry_history.rank,
+          overallRank: picks.entry_history.overall_rank,
+          benchPoints: picks.entry_history.points_on_bench,
+          transfers: picks.entry_history.event_transfers,
+          transferCost: picks.entry_history.event_transfers_cost,
+          value: picks.entry_history.value,
+          bank: picks.entry_history.bank,
+        }
+      : (standingsTotal !== null
+          ? { gw, points: standingsDerivedGwPoints, totalPoints: standingsTotal, rank: null, overallRank: null, benchPoints: 0, transfers: 0, transferCost: 0, value: null, bank: null }
+          : null);
+    if (liveEntry && standingsTotal !== null && standingsTotal > liveEntry.totalPoints) {
+      console.log(`Entry ${entryId} (${m.entry_name}): standings total (${standingsTotal}) ahead of picks/history total (${liveEntry.totalPoints}) for GW${gw} — using standings (gw points ${liveEntry.points} -> ${standingsDerivedGwPoints})`);
+      liveEntry = { ...liveEntry, points: standingsDerivedGwPoints, totalPoints: standingsTotal };
+    }
     const fullHistory = (liveEntry ? [...confirmedHistory, liveEntry] : confirmedHistory)
       .sort((a, b) => a.gw - b.gw);
     managerHistoryMap[entryId] = { entryId, entry_name: m.entry_name, player_name: m.player_name, fullHistory };
@@ -993,6 +1015,9 @@ async function main() {
   const forceFplCourt = !!manualTrigger.regenerateFplCourt;
   const forcePressConf = !!manualTrigger.regeneratePressConference;
   const forceMicroBanter = !!manualTrigger.regenerateMicroBanter;
+  if (forceAutopsy || forceFplCourt || forcePressConf || forceMicroBanter) {
+    console.log(`Manual content trigger doc found: regenerateAutopsy=${forceAutopsy}, regenerateFplCourt=${forceFplCourt}, regeneratePressConference=${forcePressConf}, regenerateMicroBanter=${forceMicroBanter} (requested ${manualTrigger.requestedAt?.toDate?.().toISOString?.() || "unknown time"})`);
+  }
 
   // AI-generated gameweek recap ("The Autopsy") — fires on WHICHEVER comes
   // first: FPL's own official confirmation, or our own fixture-based
@@ -1004,6 +1029,8 @@ async function main() {
   let autopsyDone = false, fplCourtDone = false, pressConfDone = false, microBanterDone = false;
   if (isFinal || gwSafelyDone || forceAutopsy) {
     autopsyDone = await generateAutopsyIfNeeded(gw, { gwWinner, gwLoser, biggestBench, mostHits, mostCaptained, avgPoints }, forceAutopsy);
+  } else {
+    console.log(`Autopsy GW${gw}: not attempting — isFinal=${isFinal}, gwSafelyDone=${gwSafelyDone}, forceAutopsy=${forceAutopsy} (all false)`);
   }
   // These check matchday readiness internally (see findLatestReadyMatchday),
   // so they're called every sync regardless of whole-GW isFinal status —
@@ -1033,7 +1060,7 @@ async function main() {
 async function generateAutopsyIfNeeded(gw, stats, forceRegen = false) {
   const ref = db.doc(`autopsyReports/gw${gw}`);
   const existing = await ref.get();
-  if (existing.exists && !forceRegen) return false;
+  if (existing.exists && !forceRegen) { console.log(`Autopsy GW${gw}: already exists and no forced regen requested — skipping`); return false; }
 
   const { gwWinner, gwLoser, biggestBench, mostHits, mostCaptained, avgPoints } = stats;
   const facts = [
@@ -1591,9 +1618,9 @@ function todayNPTServer() {
 // opens the site.
 async function findLatestReadyMatchday(gw) {
   const snap = await db.doc(`gameweekFixtures/gw${gw}`).get();
-  if (!snap.exists) return null;
+  if (!snap.exists) { console.log(`findLatestReadyMatchday GW${gw}: no gameweekFixtures doc yet — null`); return null; }
   const fixtures = snap.data().fixtures || [];
-  if (fixtures.length === 0) return null;
+  if (fixtures.length === 0) { console.log(`findLatestReadyMatchday GW${gw}: fixtures array empty — null`); return null; }
   const byDate = {};
   fixtures.forEach((f) => {
     const d = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kathmandu" }).format(new Date(f.kickoff));
@@ -1603,7 +1630,10 @@ async function findLatestReadyMatchday(gw) {
   const readyDates = Object.keys(byDate)
     .filter((d) => d <= today && byDate[d].every((f) => f.finished))
     .sort();
-  return readyDates.length ? readyDates[readyDates.length - 1] : null;
+  const result = readyDates.length ? readyDates[readyDates.length - 1] : null;
+  const perDateSummary = Object.keys(byDate).sort().map(d => `${d}: ${byDate[d].filter(f=>f.finished).length}/${byDate[d].length} finished${d>today?' (future)':''}`).join(" | ");
+  console.log(`findLatestReadyMatchday GW${gw}: today(NPT)=${today} — ${perDateSummary} — result: ${result ?? "null"}`);
+  return result;
 }
 
 // A second, independent path to "is this gameweek safely done" for the
@@ -1619,27 +1649,33 @@ async function findLatestReadyMatchday(gw) {
 // this and stays on the strict official flag only.
 async function checkGwSafelyDoneForAI(gw) {
   const snap = await db.doc(`gameweekFixtures/gw${gw}`).get();
-  if (!snap.exists) return false;
+  if (!snap.exists) { console.log(`checkGwSafelyDoneForAI GW${gw}: no gameweekFixtures doc yet — false`); return false; }
   const fixtures = snap.data().fixtures || [];
-  if (fixtures.length === 0) return false;
-  const allFinished = fixtures.every((f) => f.finished);
-  if (!allFinished) return false;
+  if (fixtures.length === 0) { console.log(`checkGwSafelyDoneForAI GW${gw}: fixtures array empty — false`); return false; }
+  const notFinished = fixtures.filter((f) => !f.finished);
+  if (notFinished.length > 0) {
+    console.log(`checkGwSafelyDoneForAI GW${gw}: ${notFinished.length}/${fixtures.length} fixtures not finished yet (ids: ${notFinished.map(f=>f.id).join(",")}) — false`);
+    return false;
+  }
   const lastKickoff = Math.max(...fixtures.map((f) => new Date(f.kickoff).getTime()));
   const MATCH_DURATION_MS = 2.5 * 60 * 60 * 1000; // ~2.5h covers 90 min + stoppage/halftime
   const BONUS_BUFFER_MS = 4.5 * 60 * 60 * 1000;   // buffer for bonus points to realistically settle
-  return Date.now() >= lastKickoff + MATCH_DURATION_MS + BONUS_BUFFER_MS;
+  const readyAt = lastKickoff + MATCH_DURATION_MS + BONUS_BUFFER_MS;
+  const isReady = Date.now() >= readyAt;
+  console.log(`checkGwSafelyDoneForAI GW${gw}: all fixtures finished, last kickoff ${new Date(lastKickoff).toISOString()}, ready at ${new Date(readyAt).toISOString()}, now ${new Date().toISOString()} — ${isReady ? "READY" : "not yet, waiting on buffer"}`);
+  return isReady;
 }
 
 // Micro Banter — 3-4 short, punchy one-liners about what just happened,
 // unlocks GW12. Same per-matchday update pattern as Press Conference/Court.
 async function generateMicroBanterIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, playersMeta, forceRegen = false) {
-  if (gw < 12) return false;
+  if (gw < 12) { if (forceRegen) console.log(`Micro Banter GW${gw}: feature unlocks at GW12, not yet — ignoring forced regen too`); return false; }
   const ref = db.doc(`microBanter/gw${gw}`);
   const existing = await ref.get();
   const existingData = existing.exists ? existing.data() : null;
   const latestReady = await findLatestReadyMatchday(gw);
-  if (!latestReady) return false;
-  if (!forceRegen && existingData?.lastGeneratedForDate === latestReady) return false;
+  if (!latestReady) { console.log(`Micro Banter GW${gw}: no ready matchday yet — skipping`); return false; }
+  if (!forceRegen && existingData?.lastGeneratedForDate === latestReady) { console.log(`Micro Banter GW${gw}: already reflects matchday ${latestReady} — skipping`); return false; }
   const byPoints = [...gwResults].sort((a,b)=>b.gwPoints-a.gwPoints);
   const winner = byPoints[0];
   const biggestBench = [...gwResults].sort((a,b)=>b.benchPoints-a.benchPoints)[0];
@@ -1672,17 +1708,17 @@ ${facts.map(f=>`- ${f}`).join('\n')}`;
 }
 
 async function generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints, playersMeta, forceRegen = false) {
-  if (gw < 10) return false;
+  if (gw < 10) { if (forceRegen) console.log(`FPL Court GW${gw}: feature unlocks at GW10, not yet — ignoring forced regen too`); return false; }
   const ref = db.doc(`fplCourt/gw${gw}`);
   const existing = await ref.get();
   const existingData = existing.exists ? existing.data() : null;
   const latestReady = await findLatestReadyMatchday(gw);
-  if (!latestReady) return false;
-  if (!forceRegen && existingData?.lastGeneratedForDate === latestReady) return false; // already reflects this matchday's results
+  if (!latestReady) { console.log(`FPL Court GW${gw}: no ready matchday yet — skipping`); return false; }
+  if (!forceRegen && existingData?.lastGeneratedForDate === latestReady) { console.log(`FPL Court GW${gw}: already reflects matchday ${latestReady} — skipping`); return false; } // already reflects this matchday's results
   // Find the defendant: manager with highest bench points (biggest waste)
   // — the most visually dramatic FPL crime, every single week
   const defendant = [...gwResults].sort((a,b)=>b.benchPoints-a.benchPoints)[0];
-  if (!defendant || defendant.benchPoints < 4) return false;
+  if (!defendant || defendant.benchPoints < 4) { console.log(`FPL Court GW${gw}: no manager with 4+ bench points wasted this week — no case to bring`); return false; }
   const squad = gwSquadsRollup[defendant.entryId];
   const bestBench = squad?.bench
     ?.map(id=>({ id, pts: livePointsByElement[id]||0 }))
@@ -1774,17 +1810,17 @@ async function computeLostPoints(gwResults, gwSquadsRollup, livePointsByElement,
 // matchday as fixtures finish (Saturday night, Sunday night, etc), skipping
 // any day with no fixtures scheduled. Unlocks at GW7.
 async function generatePressConferenceIfNeeded(gw, gwResults, avgPoints, forceRegen = false) {
-  if (gw < 7) return false;
+  if (gw < 7) { if (forceRegen) console.log(`Press Conference GW${gw}: feature unlocks at GW7, not yet — ignoring forced regen too`); return false; }
   const ref = db.doc(`pressConference/gw${gw}`);
   const existing = await ref.get();
   const existingData = existing.exists ? existing.data() : null;
   const latestReady = await findLatestReadyMatchday(gw);
-  if (!latestReady) return false;
-  if (!forceRegen && existingData?.lastGeneratedForDate === latestReady) return false;
+  if (!latestReady) { console.log(`Press Conference GW${gw}: no ready matchday yet — skipping`); return false; }
+  if (!forceRegen && existingData?.lastGeneratedForDate === latestReady) { console.log(`Press Conference GW${gw}: already reflects matchday ${latestReady} — skipping`); return false; }
   const byPoints = [...gwResults].sort((a, b) => b.gwPoints - a.gwPoints);
   const winner = byPoints[0];
   const loser = byPoints[byPoints.length - 1];
-  if (!winner || !loser) return false;
+  if (!winner || !loser) { console.log(`Press Conference GW${gw}: missing winner/loser data — skipping`); return false; }
   const prompt = `You are a fictional sports journalist covering "K&A Paid FPL", a 35-person office Fantasy Premier League mini-league. Write a funny, punchy post-match press conference for Gameweek ${gw}, based on results so far this gameweek.
 
 Include TWO separate interview segments:
