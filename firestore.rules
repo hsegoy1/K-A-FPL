@@ -29,6 +29,16 @@ service cloud.firestore {
       allow write: if request.resource.data.keys().hasOnly(['fire', 'skull', 'cry']);
     }
 
+    // FPL Court jury votes — anyone can tap Guilty/Not Guilty on the
+    // current case; only the votes field (guilty/innocent tally, written
+    // via dotted field-path increments) can ever be touched by a client,
+    // never the case content itself (defendant/prosecution/defence),
+    // which is written only by the sync script via the Admin SDK.
+    match /fplCourt/{doc} {
+      allow read: if true;
+      allow write: if request.resource.data.keys().hasOnly(['votes']);
+    }
+
     // Each manager's own favourite-club pick (for showing club badges instead
     // of initials in the standings) — written by that person during
     // onboarding, only the one known field can be touched.
