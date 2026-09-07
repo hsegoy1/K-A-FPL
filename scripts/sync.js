@@ -1697,7 +1697,7 @@ async function checkGwSafelyDoneForAI(gw) {
 // Micro Banter — 3-4 short, punchy one-liners about what just happened,
 // unlocks GW12. Same per-matchday update pattern as Press Conference/Court.
 async function generateMicroBanterIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, playersMeta, forceRegen = false) {
-  if (gw < 12) { if (forceRegen) console.log(`Micro Banter GW${gw}: feature unlocks at GW12, not yet — ignoring forced regen too`); return false; }
+  if (gw < 1) { if (forceRegen) console.log(`Micro Banter GW${gw}: feature unlocks at GW1, not yet — ignoring forced regen too`); return false; }
   const ref = db.doc(`microBanter/gw${gw}`);
   const existing = await ref.get();
   const existingData = existing.exists ? existing.data() : null;
@@ -1736,7 +1736,7 @@ ${facts.map(f=>`- ${f}`).join('\n')}`;
 }
 
 async function generateFplCourtIfNeeded(gw, gwResults, gwSquadsRollup, livePointsByElement, avgPoints, playersMeta, forceRegen = false) {
-  if (gw < 10) { if (forceRegen) console.log(`FPL Court GW${gw}: feature unlocks at GW10, not yet — ignoring forced regen too`); return false; }
+  if (gw < 1) { if (forceRegen) console.log(`FPL Court GW${gw}: feature unlocks at GW1, not yet — ignoring forced regen too`); return false; }
   const ref = db.doc(`fplCourt/gw${gw}`);
   const existing = await ref.get();
   const existingData = existing.exists ? existing.data() : null;
@@ -1838,7 +1838,7 @@ async function computeLostPoints(gwResults, gwSquadsRollup, livePointsByElement,
 // matchday as fixtures finish (Saturday night, Sunday night, etc), skipping
 // any day with no fixtures scheduled. Unlocks at GW7.
 async function generatePressConferenceIfNeeded(gw, gwResults, avgPoints, forceRegen = false) {
-  if (gw < 7) { if (forceRegen) console.log(`Press Conference GW${gw}: feature unlocks at GW7, not yet — ignoring forced regen too`); return false; }
+  if (gw < 1) { if (forceRegen) console.log(`Press Conference GW${gw}: feature unlocks at GW1, not yet — ignoring forced regen too`); return false; }
   const ref = db.doc(`pressConference/gw${gw}`);
   const existing = await ref.get();
   const existingData = existing.exists ? existing.data() : null;
