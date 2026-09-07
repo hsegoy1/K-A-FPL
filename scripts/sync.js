@@ -30,10 +30,17 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 // using that specific model, so a busy period can 429 even with a valid
 // key — this isn't something a retry of the SAME model reliably fixes.
 // Instead, try each of these in order and use whichever responds first.
+// NOTE: OpenRouter's free-tier catalog rotates over time — models get
+// renamed, deprecated, or replaced with newer ones. A model here failing
+// with 404 (not 429) means OpenRouter removed/renamed it, not a key
+// problem; that's a sign this list needs a refresh against the current
+// catalog at https://openrouter.ai/api/v1/models. Verified live 2026-09-07.
 const OPENROUTER_MODEL_CHAIN = [
   "poolside/laguna-s-2.1:free",
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "openai/gpt-oss-20b:free",
+  "nvidia/nemotron-3.5-lightning:free",
+  "thinkingmachines/inkling-small:free",
+  "inclusionai/ling-3.0-flash-sante:free",
+  "liquid/lfm-2.5-2.6b:free",
 ];
 async function callOpenRouter(prompt, maxTokens = 600) {
   if (!OPENROUTER_API_KEY) {
