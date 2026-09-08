@@ -250,7 +250,11 @@ main{padding:16px;max-width:1120px;margin:0 auto;}
 .court-vote button{flex:1;padding:8px;border-radius:10px;font-family:var(--font-m);font-size:12px;font-weight:700;cursor:pointer;border:1px solid var(--line);}
 .court-vote .guilty{background:rgba(255,77,109,.1);border-color:rgba(255,77,109,.4);color:var(--red);}
 .court-vote .innocent{background:rgba(57,255,136,.1);border-color:rgba(57,255,136,.4);color:var(--green);}
-.court-result{text-align:center;font-family:var(--font-m);font-size:13px;font-weight:700;margin-top:10px;}
+.court-result{text-align:center;font-family:var(--font-m);font-size:13px;font-weight:700;margin-top:10px;padding:8px;border-radius:8px;background:rgba(255,255,255,.04);}
+.court-result.court-pending{color:var(--muted);}
+.court-result.court-error{color:var(--red);background:rgba(255,77,109,.08);}
+.court-anim{animation:courtResultIn .35s ease;}
+@keyframes courtResultIn{from{opacity:0;transform:translateY(4px) scale(.97);}to{opacity:1;transform:translateY(0) scale(1);}}
 .court-tally{margin-top:12px;}
 .court-tally-bar{display:flex;height:8px;border-radius:6px;overflow:hidden;background:var(--line);}
 .court-tally-bar .g{background:var(--red);}
@@ -2186,29 +2190,49 @@ async function renderFplCourt(){
       <div class="ctitle">🟢 Defence</div>
       <div class="ctext">${escapeHtml(d.defence||"")}</div>
     </div>
-    ${myVote
-      ? `<div class="court-result">${myVote==="guilty"?"🔴 You voted: Guilty":"🟢 You voted: Not Guilty"}</div>`
-      : me?`<div class="court-vote">
-          <button class="guilty" data-v="guilty">🔴 Guilty</button>
-          <button class="innocent" data-v="innocent">🟢 Not Guilty</button>
-        </div>`:''}
+    <div id="court-vote-wrap">${courtVoteWrapHtml(myVote, !!me)}</div>
     ${renderCourtTally(d.votes)}
   `;
-  if(me && !myVote){
-    el.querySelectorAll(".court-vote button").forEach(btn=>{
-      btn.addEventListener("click",async()=>{
-        const v=btn.dataset.v;
-        el.querySelectorAll(".court-vote button").forEach(b=>b.disabled=true);
-        try{
-          await setDoc(doc(db,`fplCourt/gw${GW_COUNT}`),{ [`votes.${v}`]: increment(1) },{ merge:true });
-          localStorage.setItem(`court_vote_gw${GW_COUNT}_${me.id}`,v);
-        }catch(err){
-          console.error("FPL Court vote failed to save:",err);
-        }
-        renderFplCourt();
-      });
-    });
+  wireCourtVoteButtons(el, me);
+}
+// The vote area's HTML for a given state — its own function so a failed
+// write or a retry can swap just this piece without re-fetching everything.
+function courtVoteWrapHtml(myVote, hasIdentity){
+  if(myVote){
+    return `<div class="court-result court-anim">${myVote==="guilty"
+      ? "🔨 Verdict cast: <b>GUILTY</b>"
+      : "🕊️ Verdict cast: <b>NOT GUILTY</b>"}</div>`;
   }
+  if(!hasIdentity) return '';
+  return `<div class="court-vote">
+      <button class="guilty" data-v="guilty">🔴 Guilty</button>
+      <button class="innocent" data-v="innocent">🟢 Not Guilty</button>
+    </div>`;
+}
+function wireCourtVoteButtons(container, me){
+  const wrap=container.querySelector("#court-vote-wrap");
+  if(!wrap || !me) return;
+  wrap.querySelectorAll(".court-vote button").forEach(btn=>{
+    btn.addEventListener("click", async()=>{
+      const v=btn.dataset.v;
+      wrap.innerHTML=`<div class="court-result court-anim court-pending">⚖️ Casting your verdict…</div>`;
+      try{
+        await setDoc(doc(db,`fplCourt/gw${GW_COUNT}`),{ [`votes.${v}`]: increment(1) },{ merge:true });
+        localStorage.setItem(`court_vote_gw${GW_COUNT}_${me.id}`,v);
+        wrap.innerHTML=courtVoteWrapHtml(v, true);
+        renderFplCourt(); // full refresh so the tally bar picks up the new count
+      }catch(err){
+        console.error("FPL Court vote failed to save:",err);
+        wrap.innerHTML=`
+          <div class="court-result court-anim court-error">⚠️ Your verdict didn't save — try again.</div>
+          <div class="court-vote">
+            <button class="guilty" data-v="guilty">🔴 Guilty</button>
+            <button class="innocent" data-v="innocent">🟢 Not Guilty</button>
+          </div>`;
+        wireCourtVoteButtons(container, me);
+      }
+    });
+  });
 }
 
 // ---------- GW Guilty (FPL Court verdict archive) ----------
