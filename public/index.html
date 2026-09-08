@@ -2169,12 +2169,16 @@ async function renderFplCourt(){
   const el=document.getElementById("court-display");
   document.getElementById("court-new-badge").innerHTML=newBadgeHtml('fplCourt');
   if(!featureUnlocked('fplCourt')||!GW_COUNT){ el.innerHTML=""; return; }
-  const snap=await getDoc(doc(db,`fplCourt/gw${GW_COUNT}`));
+  const [snap,voteSnap]=await Promise.all([
+    getDoc(doc(db,`fplCourt/gw${GW_COUNT}`)),
+    getDoc(doc(db,`fplCourtVotes/gw${GW_COUNT}`)),
+  ]);
   if(!snap.exists()){
     el.innerHTML=`<div class="sub">Court convenes once GW${GW_COUNT} bonus points are confirmed.</div>`;
     return;
   }
   const d=snap.data();
+  const votes=voteSnap.exists()?voteSnap.data():null;
   const me=managers.find(m=>m.teamName===ident.team);
   const myVote=me?localStorage.getItem(`court_vote_gw${GW_COUNT}_${me.id}`):null;
   el.innerHTML=`
@@ -2191,7 +2195,7 @@ async function renderFplCourt(){
       <div class="ctext">${escapeHtml(d.defence||"")}</div>
     </div>
     <div id="court-vote-wrap">${courtVoteWrapHtml(myVote, !!me)}</div>
-    ${renderCourtTally(d.votes)}
+    ${renderCourtTally(votes)}
   `;
   wireCourtVoteButtons(el, me);
 }
@@ -2217,7 +2221,11 @@ function wireCourtVoteButtons(container, me){
       const v=btn.dataset.v;
       wrap.innerHTML=`<div class="court-result court-anim court-pending">⚖️ Casting your verdict…</div>`;
       try{
-        await setDoc(doc(db,`fplCourt/gw${GW_COUNT}`),{ [`votes.${v}`]: increment(1) },{ merge:true });
+        // Its own doc, flat guilty/innocent fields — same shape as the
+        // reactions collection, so the same simple hasOnly() rule applies
+        // cleanly (no dotted-path merge onto a doc with other, unrelated
+        // server-owned fields, which is what broke this before).
+        await setDoc(doc(db,`fplCourtVotes/gw${GW_COUNT}`),{ [v]: increment(1) },{ merge:true });
         localStorage.setItem(`court_vote_gw${GW_COUNT}_${me.id}`,v);
         wrap.innerHTML=courtVoteWrapHtml(v, true);
         renderFplCourt(); // full refresh so the tally bar picks up the new count
@@ -2242,8 +2250,13 @@ async function renderCourtArchive(){
   if(!el) return;
   if(!featureUnlocked('fplCourt')||!GW_COUNT){ el.innerHTML=""; return; }
   const gws=Array.from({length:GW_COUNT},(_,i)=>i+1);
-  const snaps=await Promise.all(gws.map(gw=>getDoc(doc(db,`fplCourt/gw${gw}`))));
-  const cases=snaps.map((s,i)=>s.exists()?{gw:gws[i],...s.data()}:null).filter(Boolean).sort((a,b)=>b.gw-a.gw);
+  const [snaps,voteSnaps]=await Promise.all([
+    Promise.all(gws.map(gw=>getDoc(doc(db,`fplCourt/gw${gw}`)))),
+    Promise.all(gws.map(gw=>getDoc(doc(db,`fplCourtVotes/gw${gw}`)))),
+  ]);
+  const cases=snaps
+    .map((s,i)=>s.exists()?{gw:gws[i],...s.data(),votes:voteSnaps[i].exists()?voteSnaps[i].data():null}:null)
+    .filter(Boolean).sort((a,b)=>b.gw-a.gw);
   if(!cases.length){ el.innerHTML=`<div class="sub">No verdicts yet — check back once FPL Court starts convening.</div>`; return; }
   courtArchiveCache={};
   cases.forEach(c=>{ courtArchiveCache[c.gw]=c; });
