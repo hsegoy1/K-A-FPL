@@ -29,21 +29,25 @@ service cloud.firestore {
       allow write: if request.resource.data.keys().hasOnly(['fire', 'skull', 'cry']);
     }
 
-    // FPL Court jury votes — anyone can tap Guilty/Not Guilty on the
-    // current case; only the votes field (guilty/innocent tally, written
-    // via dotted field-path increments) can ever be touched by a client,
-    // never the case content itself (defendant/prosecution/defence),
-    // which is written only by the sync script via the Admin SDK.
-    //
-    // NOTE: this doc also holds gw/defendant/prosecution/defence/
-    // generatedAt, unlike a reactions doc which holds ONLY its vote
-    // fields — so `request.resource.data.keys().hasOnly([...])` (which
-    // checks the FULL resulting document, not just what changed) would
-    // always fail here because of those other fields. diff().affectedKeys()
-    // checks only the fields this specific write actually touches.
+    // FPL Court case content (defendant/prosecution/defence) — written
+    // only by the sync script via the Admin SDK, same as everything else
+    // in the catch-all below. No client writes here at all.
     match /fplCourt/{doc} {
       allow read: if true;
-      allow write: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes']);
+      allow write: if false;
+    }
+
+    // FPL Court jury votes — anyone can tap Guilty/Not Guilty on the
+    // current case. Kept as its OWN document (not merged onto fplCourt's
+    // case-content doc above) so this can use the same simple flat-field
+    // pattern as `reactions` below: guilty/innocent are the only two
+    // fields this doc will ever have, so hasOnly() checking the full
+    // resulting document is exactly right here — no dotted field-path
+    // merge onto a doc that also has other, unrelated server-owned
+    // fields (that combination is what broke the earlier version of this).
+    match /fplCourtVotes/{doc} {
+      allow read: if true;
+      allow write: if request.resource.data.keys().hasOnly(['guilty', 'innocent']);
     }
 
     // Each manager's own favourite-club pick (for showing club badges instead
