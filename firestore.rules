@@ -37,17 +37,20 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // FPL Court jury votes — anyone can tap Guilty/Not Guilty on the
-    // current case. Kept as its OWN document (not merged onto fplCourt's
-    // case-content doc above) so this can use the same simple flat-field
-    // pattern as `reactions` below: guilty/innocent are the only two
-    // fields this doc will ever have, so hasOnly() checking the full
-    // resulting document is exactly right here — no dotted field-path
-    // merge onto a doc that also has other, unrelated server-owned
-    // fields (that combination is what broke the earlier version of this).
-    match /fplCourtVotes/{doc} {
+    // FPL Court jury votes — one ballot document per manager per
+    // gameweek, doc id `gw{N}_{entryId}` (chosen client-side, deterministic
+    // per manager). `allow create` covers the FIRST vote for that id
+    // (resource doesn't exist yet); `allow update, delete: if false` means
+    // once that document exists, NOTHING can ever change or remove it —
+    // including a second vote attempt at the same id, which Firestore
+    // evaluates as an update (since the doc already exists), not a create,
+    // and is therefore always denied. That's what actually ties one vote
+    // to one manager, server-side — not just hiding the buttons client-side.
+    match /courtBallots/{ballotId} {
       allow read: if true;
-      allow write: if request.resource.data.keys().hasOnly(['guilty', 'innocent']);
+      allow create: if request.resource.data.keys().hasOnly(['gw', 'entryId', 'teamName', 'vote', 'votedAt'])
+                    && request.resource.data.vote in ['guilty', 'innocent'];
+      allow update, delete: if false;
     }
 
     // Each manager's own favourite-club pick (for showing club badges instead
